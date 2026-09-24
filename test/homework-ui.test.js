@@ -46,4 +46,5 @@ test('Add homework click reaches submit instead of replacing the form first', as
   assert.equal(updated.id, savedId);
   assert.equal(updated.steps[0].title, 'Read Chapter 7');
   assert.equal(updated.title, 'Economics worksheet revised');
+  assert.equal(typeof updated.updatedAt, 'number', 'edits are timestamped for sync');
 });

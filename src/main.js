@@ -2,21 +2,35 @@ import { addDays, dayInfo, lessonsOn, LAST_S6_DAY, periodTimes, resolveHomework,
 import { homeworkStatus, homeworkSubjects, normalizeHomework, reminderDays, visibleHomework } from './homework.js';
 import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
+import { diffState, hasChanges, migrate, snapshotOf, stampChanges } from './sync-model.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
 const saved = (() => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } })();
 const state = {
   date: new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Hong_Kong'}),
-  homework: Array.isArray(saved.homework) ? saved.homework : [],
-  overrides: saved.overrides || {},
-  timeMode: saved.timeMode === 'winter' ? 'winter' : 'summer',
+  ...migrate(saved),
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set()
+  composing: false, expanded: new Set(),
+  sync: {status: 'loading'}
 };
 const app = document.querySelector('#app');
-const persist = () => localStorage.setItem(key, JSON.stringify({ homework: state.homework, overrides: state.overrides, timeMode: state.timeMode, view: state.view }));
+let synced = snapshotOf(state);
+let sync = null;
+const save = () => localStorage.setItem(key, JSON.stringify({
+  homework: state.homework, deleted: state.deleted, overrides: state.overrides, overrideStamps: state.overrideStamps,
+  timeMode: state.timeMode, timeModeStamp: state.timeModeStamp, view: state.view
+}));
+// Every edit ends in persist(): it works out which records changed, stamps them, saves, and uploads them.
+function persist() {
+  const next = snapshotOf(state);
+  const changes = diffState(synced, next);
+  synced = next;
+  if (hasChanges(changes)) { stampChanges(state, changes); sync?.push(changes); }
+  save();
+}
+save(); // Keep the timestamps given to data saved before sync existed.
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const format = (date, options) => new Intl.DateTimeFormat('en-HK', {...options, timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const readable = date => format(date, {weekday:'long', day:'numeric', month:'long', year:'numeric'});
@@ -220,10 +234,31 @@ function homeworkView() {
 
 /* ---------- Settings (the deeper layer) ---------- */
 
+const syncLines = {
+  loading: 'Starting…', syncing: 'Syncing…', offline: 'Offline · changes upload when you reconnect', error: 'Sync problem'
+};
+function syncSection() {
+  const sync = state.sync;
+  if (sync.status === 'unavailable') return `<section class="block setting">${label('Sync')}
+      <p class="hint">Google sign-in is not available in this app version yet. Use Timing in a browser to sync; this device keeps its own copy.</p></section>`;
+  const message = sync.message ? `<p class="form-error">${escapeHTML(sync.message)}</p>` : '';
+  if (!sync.email) return `<section class="block setting">${label('Sync')}
+      <button class="button" data-sync="signin" ${sync.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>${message}
+      <p class="hint">Keeps homework, day changes and lesson times the same on every device signed in with the same Google account. Homework already on this device is kept and uploaded.</p></section>`;
+  const when = sync.lastSynced ? new Intl.DateTimeFormat('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Hong_Kong'}).format(sync.lastSynced) : '';
+  const line = sync.status === 'synced' ? `Synced${when ? ` · <span class="mono">${when}</span>` : ''}` : syncLines[sync.status] ?? '';
+  return `<section class="block setting">${label('Sync')}
+      <p class="setting-date">${escapeHTML(sync.email)}</p>
+      <p class="hint" role="status">${line}</p>${message}
+      <button class="link muted" data-sync="signout">Sign out</button>
+      <p class="hint">Signing out keeps a copy on this device but stops syncing it.</p></section>`;
+}
+
 function settingsView() {
   const override = state.overrides[state.date] ?? {};
   const info = dayInfo(state.date, state.overrides);
-  return `<header class="hero"><h1 class="display">Settings</h1><p class="sub">Class 6B · data stays on this device</p></header>
+  return `<header class="hero"><h1 class="display">Settings</h1><p class="sub">Class 6B · ${state.sync.email ? 'synced with your Google account' : 'data stays on this device'}</p></header>
+    ${syncSection()}
     <section class="block setting">
       ${label('Lesson times')}
       ${toggle('time-mode', [['summer','Summer'],['winter','Winter']], state.timeMode, 'Lesson times')}
@@ -304,6 +339,8 @@ app.addEventListener('click', event => {
     state.homework = state.homework.filter(h => h.id !== button.dataset.remove);
     if (state.editingId === button.dataset.remove) state.editingId = null;
   }
+  if (button.dataset.sync === 'signin') sync?.signIn();
+  if (button.dataset.sync === 'signout') sync?.signOut();
   if (button.dataset.export !== undefined) {
     const url = URL.createObjectURL(new Blob([calendarICS(state.homework, state.overrides, state.timeMode)], {type:'text/calendar;charset=utf-8'}));
     const link = document.createElement('a'); link.href = url; link.download = 'timing-s6-calendar.ics'; link.click();
@@ -399,4 +436,20 @@ const clock = setInterval(() => {
   if (state.view === 'today' && !(active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName))) render();
 }, 60000);
 clock?.unref?.();
+
+/* ---------- Sync ---------- */
+
+// A change from another device must not wipe out a form that is being typed in; render once focus leaves it.
+let renderPending = false;
+const typing = () => { const active = globalThis.document?.activeElement; return Boolean(active && app.contains?.(active) && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName)); };
+function renderSoon() { if (typing()) renderPending = true; else { renderPending = false; render(); } }
+app.addEventListener('focusout', () => setTimeout(() => { if (renderPending) renderSoon(); }, 0));
+const onRemoteChange = () => { synced = snapshotOf(state); save(); renderSoon(); };
+const onStatus = status => { state.sync = status; if (state.view === 'settings') renderSoon(); };
+if (typeof window !== 'undefined') {
+  import('./sync.js')
+    .then(({ startSync }) => startSync({ state, onRemoteChange, onStatus }))
+    .then(instance => { sync = instance; })
+    .catch(() => onStatus({ status: 'error', message: 'Sync could not start. Check your connection and reload.' }));
+} else state.sync = { status: 'unavailable' };
 if (globalThis.navigator && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});

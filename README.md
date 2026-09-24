@@ -26,15 +26,25 @@ The mobile projects are generated in CI with Capacitor from the `www/` assets. T
 - Lessons stop after the S6 last school day on 1 February 2027, even though the school calendar continues for other year groups.
 - Homework stores a subject and the day it was assigned. The due lesson is recomputed when a date is marked as no school, restored to normal, or given another cycle letter.
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
-- Data lives in this browser's local storage. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, account sync, and live Google/Apple Calendar synchronization are future platform integrations.
+- Data lives in this browser's local storage and, after signing in with Google, is also synced through Firestore (see **Sync**). Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, and live Google/Apple Calendar synchronization are future platform integrations.
 
 ## Homework
 
 Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
 
-**Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications or synchronize homework between devices.
+**Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
 
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
+
+## Sync
+
+Settings → **Sign in with Google** keeps homework, day overrides and the summer/winter setting the same on every device signed in with the same account. It works offline: edits are kept on the device and uploaded when the connection returns.
+
+- `src/sync-model.js` holds the pure rules (tested in `test/sync-model.test.js`): each homework item, day override and the lesson-time setting carries the time of its last change, the newer copy wins record by record, and deleted homework leaves a small marker so another device cannot bring it back. Timestamps come from each device's clock.
+- `src/sync.js` talks to Firebase. Cloud layout: `users/{uid}/homework/{id}`, `users/{uid}/overrides/{date}`, `users/{uid}/meta/settings`. `firestore.rules` limits every account to its own documents; paste it into Firestore → Rules after changing it.
+- `src/firebase-config.js` identifies the Firebase project (public values, not secrets). `src/vendor/firebase.js` is the bundled Firebase SDK so the app still needs no build step; rebuild it with `npm install && npm run vendor:firebase`.
+- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on every push to `main`. Its domain must be listed under Firebase → Authentication → Settings → Authorized domains. Bump `CACHE` in `sw.js` when shipping changes, or installed copies keep the old files.
+- Google sign-in in the Android, iOS and desktop packages is not implemented yet (Google blocks its sign-in page inside embedded app views). Those builds show that sync is unavailable and keep working locally.
 
 ## Design
 
