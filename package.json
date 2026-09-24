@@ -3,8 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "python3 -m http.server 5173",
-    "test": "node --test"
+    "test": "node --test",
+    "package:web": "node scripts/copy-web.mjs",
+    "package:windows": "npm run package:web && electron-builder --win portable --x64",
+    "package:linux": "npm run package:web && electron-builder --linux deb --x64"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.darrenintr.timing",
+    "productName": "Timing",
+    "directories": {"output": "dist"},
+    "files": ["desktop/main.cjs", "www/**/*", "package.json"],
+    "win": {"target": [{"target": "portable", "arch": ["x64"]}], "artifactName": "Timing-${version}-windows-${arch}.${ext}"},
+    "linux": {"target": [{"target": "deb", "arch": ["x64"]}], "category": "Education", "artifactName": "Timing-${version}-linux-${arch}.${ext}"}
   }
 }
