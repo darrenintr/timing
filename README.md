@@ -35,3 +35,13 @@ Open the **Homework** tab in the top bar, or use **+ Add homework** on the sched
 **Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications or synchronize homework between devices.
 
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
+
+## Design
+
+The interface follows Material 3 Expressive, with a colour scheme built from the teal seed `#214e4c` and a terracotta accent. It follows the system light or dark setting. The layout adapts to the window width:
+
+- **Under 600 px (phones):** bottom navigation bar with Today, Calendar, and Homework, plus a floating add button.
+- **600–1199 px (tablets, foldables, narrow desktop windows):** navigation rail; lessons and the calendar sit side by side.
+- **1200 px and wider (desktop, iPad landscape):** expanded rail with three panes for lessons, the calendar, and homework.
+
+The app icon (six lobes for cycle days A–F, with a hand pointing at the current day) is available as `icon.svg`, `icon-maskable.svg` for Android adaptive icons, and `icon-monochrome.svg` for themed icons. Roboto Flex (`src/fonts`, SIL Open Font License) and Material Symbols Rounded paths (`src/icons.js`, Apache License 2.0) are bundled so the app works offline.

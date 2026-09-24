@@ -1,4 +1,4 @@
-const { app, BrowserWindow, net, protocol } = require('electron');
+const { app, BrowserWindow, nativeTheme, net, protocol } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -19,9 +19,9 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 480,
-    minHeight: 640,
-    backgroundColor: '#f5f7f3',
+    minWidth: 360,
+    minHeight: 560,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1514' : '#f4fbf8',
     title: 'Timing',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
   });
