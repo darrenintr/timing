@@ -8,8 +8,8 @@
     "dev": "python3 -m http.server 5173",
     "test": "node --test",
     "package:web": "node scripts/copy-web.mjs",
-    "package:windows": "npm run package:web && electron-builder --win portable --x64",
-    "package:linux": "npm run package:web && electron-builder --linux deb --x64"
+    "package:windows": "npm run package:web && electron-builder --publish never --win portable --x64",
+    "package:linux": "npm run package:web && electron-builder --publish never --linux deb --x64"
   },
   "dependencies": {
     "@capacitor/core": "^7.0.0"
