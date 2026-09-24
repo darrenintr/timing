@@ -240,7 +240,7 @@ const syncLines = {
 function syncSection() {
   const sync = state.sync;
   if (sync.status === 'unavailable') return `<section class="block setting">${label('Sync')}
-      <p class="hint">Google sign-in is not available in this app version yet. Use Timing in a browser to sync; this device keeps its own copy.</p></section>`;
+      <p class="hint">Google sign-in is not available in this version of the app yet. Install Timing from the website to sync; this device keeps its own copy.</p></section>`;
   const message = sync.message ? `<p class="form-error">${escapeHTML(sync.message)}</p>` : '';
   if (!sync.email) return `<section class="block setting">${label('Sync')}
       <button class="button" data-sync="signin" ${sync.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>${message}

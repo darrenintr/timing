@@ -12,7 +12,7 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |
-| Android | `Timing-Android-APK` | Debug-signed APK for direct installation; not a Play Store release build. |
+| Android | `Timing-Android-APK` | Release APK signed with the Timing key from the `ANDROID_KEYSTORE_*` repository secrets, for direct installation. Its SHA-1 must match the one registered in Firebase (the build checks this). |
 | Windows | `Timing-Windows-EXE` | Portable x64 EXE; Windows may warn because it is not code-signed. |
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
 | iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
@@ -44,7 +44,7 @@ Settings → **Sign in with Google** keeps homework, day overrides and the summe
 - `src/sync.js` talks to Firebase. Cloud layout: `users/{uid}/homework/{id}`, `users/{uid}/overrides/{date}`, `users/{uid}/meta/settings`. `firestore.rules` limits every account to its own documents; paste it into Firestore → Rules after changing it.
 - `src/firebase-config.js` identifies the Firebase project (public values, not secrets). `src/vendor/firebase.js` is the bundled Firebase SDK so the app still needs no build step; rebuild it with `npm install && npm run vendor:firebase`.
 - The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on every push to `main`. Its domain must be listed under Firebase → Authentication → Settings → Authorized domains. Bump `CACHE` in `sw.js` when shipping changes, or installed copies keep the old files.
-- Google sign-in in the Android, iOS and desktop packages is not implemented yet (Google blocks its sign-in page inside embedded app views). Those builds show that sync is unavailable and keep working locally.
+- Google blocks its sign-in page inside embedded app views, so each app platform signs in its own way. Browser: Google popup. Android: the native account picker from `@capacitor-firebase/authentication` (`skipNativeAuth`, so the ID token is handed to the same Firebase JS session); the build copies `google-services.json` into the generated project. The iOS (`GoogleService-Info.plist` is stored for later; the plugin is excluded from iOS in `capacitor.config.json`) and desktop packages do not sign in yet and keep working locally.
 
 ## Design
 

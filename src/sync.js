@@ -17,14 +17,20 @@ const friendlyError = error => ({
 }[error?.code] ?? error?.message ?? 'Something went wrong.');
 
 export async function startSync({ state, onRemoteChange, onStatus }) {
-  // Google blocks its sign-in page inside app web views; native sign-in comes in a later phase.
-  if (globalThis.Capacitor?.isNativePlatform?.() || location.protocol === 'timing:') {
+  // Google blocks its sign-in page inside app web views, so each app platform needs its own sign-in route.
+  // Browser: Google popup. Android: native Google account picker (Capacitor plugin), then the same Firebase session.
+  // Desktop (Electron) and iOS: not wired up yet.
+  const { Capacitor, registerPlugin } = await import('./vendor/capacitor.js');
+  const platform = Capacitor.getPlatform();
+  if (location.protocol === 'timing:' || platform === 'ios') {
     onStatus({ status: 'unavailable' });
     return null;
   }
+  const native = platform === 'android' ? registerPlugin('FirebaseAuthentication') : null;
   const fb = await import('./vendor/firebase.js');
   const app = fb.initializeApp(firebaseConfig);
-  const auth = fb.getAuth(app);
+  // In the Android app there is no popup, so skip the popup helper and keep the session in IndexedDB.
+  const auth = native ? fb.initializeAuth(app, { persistence: fb.indexedDBLocalPersistence }) : fb.getAuth(app);
   let db;
   try {
     db = fb.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: fb.persistentLocalCache({ tabManager: fb.persistentMultipleTabManager() }) });
@@ -102,7 +108,7 @@ export async function startSync({ state, onRemoteChange, onStatus }) {
     ];
   }
 
-  fb.getRedirectResult(auth).catch(failure => { error = friendlyError(failure); report(); });
+  if (!native) fb.getRedirectResult(auth).catch(failure => { error = friendlyError(failure); report(); });
   fb.onAuthStateChanged(auth, next => {
     listeners.forEach(stop => stop());
     listeners = [];
@@ -119,6 +125,20 @@ export async function startSync({ state, onRemoteChange, onStatus }) {
       upload({ homework: [...changes.homework, ...changes.removed], overrides: changes.overrides, settings: changes.timeMode });
     },
     async signIn() {
+      if (native) {
+        error = null;
+        try {
+          const result = await native.signInWithGoogle();
+          const idToken = result?.credential?.idToken;
+          if (!idToken) throw new Error('Google did not return a sign-in token.');
+          await fb.signInWithCredential(auth, fb.GoogleAuthProvider.credential(idToken));
+        } catch (failure) {
+          if (/cancel/i.test(String(failure?.message ?? failure?.code ?? ''))) return;
+          error = friendlyError(failure);
+          onStatus({ status: 'signed-out', message: error });
+        }
+        return;
+      }
       const provider = new fb.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       error = null;
@@ -131,6 +151,9 @@ export async function startSync({ state, onRemoteChange, onStatus }) {
         onStatus({ status: 'signed-out', message: error });
       }
     },
-    signOut: () => fb.signOut(auth)
+    async signOut() {
+      if (native) await native.signOut().catch(() => {});
+      await fb.signOut(auth);
+    }
   };
 }
