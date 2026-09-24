@@ -27,6 +27,6 @@
     "directories": {"output": "dist"},
     "files": ["desktop/main.cjs", "www/**/*", "package.json"],
     "win": {"target": [{"target": "portable", "arch": ["x64"]}], "artifactName": "Timing-${version}-windows-${arch}.${ext}"},
-    "linux": {"target": [{"target": "deb", "arch": ["x64"]}], "category": "Education", "artifactName": "Timing-${version}-linux-${arch}.${ext}"}
+    "linux": {"target": [{"target": "deb", "arch": ["x64"]}], "category": "Education", "maintainer": "Timing maintainers <darrenintr@users.noreply.github.com>", "artifactName": "Timing-${version}-linux-${arch}.${ext}"}
   }
 }
