@@ -28,4 +28,10 @@ The mobile projects are generated in CI with Capacitor from the `www/` assets. T
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
 - Data lives in this browser's local storage. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, account sync, and live Google/Apple Calendar synchronization are future platform integrations.
 
+## Homework
+
+Open the **Homework** tab in the top bar, or use **+ Add homework** on the schedule screen. The tab shows the form first, followed by open, completed, and subject filters. A lesson row also has a subject-specific add button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
+
+**Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications or synchronize homework between devices.
+
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
