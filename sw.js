@@ -1,6 +1,6 @@
-const CACHE = 'timing-v3';
+const CACHE = 'timing-v4';
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-maskable.svg', './icon-monochrome.svg', './src/main.js', './src/schedule.js', './src/homework.js', './src/calendar-export.js', './src/icons.js', './src/shapes.js', './src/style.css', './src/fonts/roboto-flex.woff2'])));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-maskable.svg', './icon-monochrome.svg', './src/main.js', './src/schedule.js', './src/homework.js', './src/calendar-export.js', './src/icons.js', './src/shapes.js', './src/style.css', './src/fonts/roboto-flex.woff2', './src/fonts/fraunces.woff2', './src/fonts/fraunces-italic.woff2', './src/fonts/jetbrains-mono.woff2'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', event => {

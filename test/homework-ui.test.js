@@ -33,7 +33,8 @@ test('Add homework click reaches submit instead of replacing the form first', as
   const action = dataset => ({type:'button',dataset,closest: () => null});
   listeners.click({target:{closest: () => action({view:'homework'})}});
   assert.match(app.innerHTML, /id="homework-form"/);
-  assert.ok(app.innerHTML.indexOf('id="homework-form"') < app.innerHTML.indexOf('calendar-card'), 'homework appears before the calendar');
+  assert.ok(app.innerHTML.indexOf('id="homework-form"') < app.innerHTML.indexOf('homework-list'), 'the form comes before the list');
+  assert.doesNotMatch(app.innerHTML, /class="month"/, 'the homework view stays focused and does not render the calendar');
   const stepForm = {matches: selector => selector === '.step-form', dataset:{taskId:savedId}, values:{step:'Read Chapter 7'}};
   listeners.submit({target:stepForm, preventDefault(){}});
   assert.equal(JSON.parse(stored).homework[0].steps[0].title, 'Read Chapter 7');

@@ -30,7 +30,7 @@ The mobile projects are generated in CI with Capacitor from the `www/` assets. T
 
 ## Homework
 
-Open the **Homework** tab in the top bar, or use **+ Add homework** on the schedule screen. The tab shows the form first, followed by open, completed, and subject filters. A lesson row also has a subject-specific add button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
+Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
 
 **Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications or synchronize homework between devices.
 
@@ -38,10 +38,17 @@ Source: user-supplied school calendar screenshots and 6B class timetable. Verify
 
 ## Design
 
-The interface follows Material 3 Expressive, with a colour scheme built from the teal seed `#214e4c` and a terracotta accent. It follows the system light or dark setting. The layout adapts to the window width:
+The interface is deliberately quiet: one centred column, hairline dividers instead of cards, and three type families that carry the hierarchy instead of boxes and colour blocks.
 
-- **Under 600 px (phones):** bottom navigation bar with Today, Calendar, and Homework, plus a floating add button.
-- **600–1199 px (tablets, foldables, narrow desktop windows):** navigation rail; lessons and the calendar sit side by side.
-- **1200 px and wider (desktop, iPad landscape):** expanded rail with three panes for lessons, the calendar, and homework.
+- **Fraunces** (serif) for headlines and whatever matters right now: the day name, the current lesson, the cycle day in italic.
+- **Roboto Flex** (sans) for reading text and controls, using weight (400 → 750) and small tracked capitals for section labels.
+- **JetBrains Mono** for things you scan in a column: times, rooms, teachers, periods.
 
-The app icon (six lobes for cycle days A–F, with a hand pointing at the current day) is available as `icon.svg`, `icon-maskable.svg` for Android adaptive icons, and `icon-monochrome.svg` for themed icons. Roboto Flex (`src/fonts`, SIL Open Font License) and Material Symbols Rounded paths (`src/icons.js`, Apache License 2.0) are bundled so the app works offline.
+Colour is kept to meaning: teal for the cycle day and "now", terracotta for notices and things due today, red for overdue. It follows the system light or dark setting.
+
+The top bar has three views (Today, Calendar, Homework) and a settings button. Less frequent controls live one layer deeper:
+
+- **Settings:** summer or winter lesson times, overriding a day's status or cycle letter, calendar export, and notes about the data.
+- **Homework:** the add form is folded behind **+ Add homework**; reminders and notes are folded again inside it; each assignment's steps, notes, edit and delete sit behind its own disclosure.
+
+Fonts are bundled in `src/fonts` under the SIL Open Font License (Roboto Flex, Fraunces, JetBrains Mono). Material Symbols Rounded paths (`src/icons.js`) are under the Apache License 2.0. The app icon is available as `icon.svg`, `icon-maskable.svg` and `icon-monochrome.svg`.
