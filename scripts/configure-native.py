@@ -7,32 +7,49 @@ import sys
 from pathlib import Path
 
 platform = sys.argv[1]
+NATIVE = {'android': ('TIMING_FIREBASE_ANDROID_JSON_BASE64', 'google-services.json'),
+          'ios': ('TIMING_FIREBASE_IOS_PLIST_BASE64', 'GoogleService-Info.plist')}
+
+
+def web_config():
+    """The Web config as copy-web.mjs resolves it: the environment, else the committed project."""
+    if os.environ.get('TIMING_FIREBASE_CONFIG'):
+        return json.loads(os.environ['TIMING_FIREBASE_CONFIG'])
+    return Path('src/firebase-config.js').exists()
+
+
+def native_file(target):
+    """The native Firebase file: a base64 secret, else the committed project file."""
+    variable, name = NATIVE[target]
+    if os.environ.get(variable):
+        return base64.b64decode(os.environ[variable], validate=True)
+    return Path(name).read_bytes() if Path(name).exists() else None
+
+
 if platform in ('prepare-android', 'prepare-ios'):
     target = platform.removeprefix('prepare-')
-    config = os.environ.get('TIMING_FIREBASE_CONFIG')
-    encoded = os.environ.get('TIMING_FIREBASE_ANDROID_JSON_BASE64' if target == 'android' else 'TIMING_FIREBASE_IOS_PLIST_BASE64')
-    if bool(config) != bool(encoded):
-        sys.exit(f'Firebase web and {target} native configuration must be supplied together')
+    config = web_config()
+    if config and not native_file(target):
+        sys.exit(f'Firebase web config provided but the {target} native Firebase file is missing')
     config_file = Path('capacitor.config.json')
     settings = json.loads(config_file.read_text())
     settings[target] = {'includePlugins': ['@capacitor-firebase/authentication'] if config else []}
     config_file.write_text(json.dumps(settings, indent=2) + '\n')
     print(f'{target} Firebase plugin ' + ('enabled' if config else 'excluded (no Firebase project configured)'))
 elif platform == 'android':
-    if not os.environ.get('TIMING_FIREBASE_CONFIG'):
+    if not web_config():
         print('Android local-only build: no native Firebase plugin')
         sys.exit(0)
     variables = Path('android/variables.gradle')
     variables.write_text(variables.read_text().rstrip() + "\n\next.rgcfaIncludeGoogle = true\next.androidxCredentialsVersion = '1.3.0'\n")
-    encoded = os.environ.get('TIMING_FIREBASE_ANDROID_JSON_BASE64')
-    if encoded:
-        Path('android/app/google-services.json').write_bytes(base64.b64decode(encoded, validate=True))
-    elif os.environ.get('TIMING_FIREBASE_CONFIG'):
-        sys.exit('Firebase web config provided but TIMING_FIREBASE_ANDROID_JSON_BASE64 is missing')
-    print('Android Google sign-in dependency enabled; native project file ' + ('installed' if encoded else 'awaiting setup'))
+    raw = native_file('android')
+    if not raw:
+        sys.exit('Firebase web config provided but google-services.json is missing')
+    Path('android/app/google-services.json').write_bytes(raw)
+    print('Android Google sign-in dependency enabled; google-services.json installed')
 
 elif platform == 'ios':
-    if not os.environ.get('TIMING_FIREBASE_CONFIG'):
+    if not web_config():
         print('iOS local-only build: no native Firebase plugin')
         sys.exit(0)
     podfile = Path('ios/App/Podfile')
@@ -41,13 +58,9 @@ elif platform == 'ios':
     content = content.replace('  assertDeploymentTarget(installer)',
       "  assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    if target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'\n      target.build_configurations.each { |config| config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO' }\n    end\n  end")
     podfile.write_text(content)
-    encoded = os.environ.get('TIMING_FIREBASE_IOS_PLIST_BASE64')
-    if not encoded:
-        if os.environ.get('TIMING_FIREBASE_CONFIG'):
-            sys.exit('Firebase web config provided but TIMING_FIREBASE_IOS_PLIST_BASE64 is missing')
-        print('iOS Google sign-in dependency enabled; native project file awaiting setup')
-        sys.exit(0)
-    raw = base64.b64decode(encoded, validate=True)
+    raw = native_file('ios')
+    if not raw:
+        sys.exit('Firebase web config provided but GoogleService-Info.plist is missing')
     settings = plistlib.loads(raw)
     reversed_id = settings.get('REVERSED_CLIENT_ID')
     if not reversed_id:

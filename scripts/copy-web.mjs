@@ -1,7 +1,9 @@
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { build } from 'esbuild';
+import { firebaseConfig } from '../src/firebase-config.js';
 
-const firebase = JSON.parse(process.env.TIMING_FIREBASE_CONFIG || '{}');
+// TIMING_FIREBASE_CONFIG overrides the project's committed public Web config; '{}' builds a local-only app.
+const firebase = process.env.TIMING_FIREBASE_CONFIG ? JSON.parse(process.env.TIMING_FIREBASE_CONFIG) : firebaseConfig;
 if (Object.keys(firebase).length && !['apiKey', 'authDomain', 'projectId', 'appId'].every(key => firebase[key])) {
   throw new Error('TIMING_FIREBASE_CONFIG must include apiKey, authDomain, projectId, and appId.');
 }

@@ -53,7 +53,7 @@ jobs:
           mkdir -p dist
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             cp android/app/build/outputs/apk/debug/app-debug.apk dist/Timing-android.apk
-            echo 'No persistent release key supplied; publishing debug APK.'
+            echo '::warning::No persistent release key supplied; publishing a debug APK. Google sign-in fails unless this runner'"'"'s debug key SHA-1 is registered in Firebase.'
             exit 0
           fi
           (cd android && ./gradlew assembleRelease)
@@ -65,7 +65,7 @@ jobs:
             --out dist/Timing-android.apk "$RUNNER_TEMP/aligned.apk"
           rm "$RUNNER_TEMP/timing.jks"
           SIGNED=$("$BUILD_TOOLS/apksigner" verify --print-certs dist/Timing-android.apk | sed -n 's/.*certificate SHA-1 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]')
-          if [ -n "$TIMING_FIREBASE_CONFIG" ]; then
+          if [ -f android/app/google-services.json ]; then
             REGISTERED=$(node -e "console.log(require('./android/app/google-services.json').client[0].oauth_client.find(c => c.android_info).android_info.certificate_hash.toLowerCase())")
             echo "APK signed with SHA-1 $SIGNED (Firebase has $REGISTERED)"
             if [ "$SIGNED" != "$REGISTERED" ]; then echo "::error::The signing key does not match the SHA-1 registered in Firebase, so Google sign-in would fail."; exit 1; fi
@@ -104,9 +104,14 @@ jobs:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
       - run: ruby scripts/install-ios-widget.rb
-      - run: rm Podfile.lock && pod install
-        if: ${{ vars.TIMING_FIREBASE_CONFIG != '' }}
+      - run: rm -f Podfile.lock && pod install
         working-directory: ios/App
+      - name: Verify Google sign-in is bundled
+        run: |
+          test -f ios/App/App/GoogleService-Info.plist || test "$TIMING_FIREBASE_CONFIG" = '{}'
+          grep -q FirebaseAuthentication ios/App/Podfile || test "$TIMING_FIREBASE_CONFIG" = '{}'
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - name: Compile without signing
         run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build
       - name: Verify widget extension is embedded
