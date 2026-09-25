@@ -26,6 +26,10 @@ jobs:
       - run: npm run package:web
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+      - run: python3 scripts/configure-native.py prepare-android
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+          TIMING_FIREBASE_ANDROID_JSON_BASE64: ${{ secrets.TIMING_FIREBASE_ANDROID_JSON_BASE64 }}
       - run: npx cap add android
       - run: python3 scripts/configure-native.py android
         env:
@@ -52,12 +56,17 @@ jobs:
       - run: npm run package:web
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+      - run: python3 scripts/configure-native.py prepare-ios
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+          TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
       - run: npx cap add ios
       - run: python3 scripts/configure-native.py ios
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
       - run: rm Podfile.lock && pod install
+        if: ${{ vars.TIMING_FIREBASE_CONFIG != '' }}
         working-directory: ios/App
       - name: Compile without signing
         run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build

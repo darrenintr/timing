@@ -17,7 +17,7 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
 | iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
 
-The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK and `python3 scripts/configure-native.py android` / `python3 scripts/configure-native.py ios`. On iOS also run `pod install` inside `ios/App`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing, widgets, and system notifications are not implemented yet.
+The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK and `python3 scripts/configure-native.py android` / `ios` after adding each platform. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing, widgets, and system notifications are not implemented yet.
 
 ## Google account sync setup
 
@@ -28,7 +28,7 @@ The header has **Sign in with Google**. Homework, smaller steps, school-day over
 3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. Register the **actual APK signing key's** SHA-1 in Firebase; the default CI debug key is ephemeral, so a persistent signing key is needed for Google login across CI builds.
 4. For iOS CI, set `TIMING_FIREBASE_IOS_PLIST_BASE64` to the base64 contents of `GoogleService-Info.plist` for the iOS app. The build script includes the plist and its reversed client ID URL scheme. The IPA is still unsigned and needs Apple signing before installation.
 
-If a native project file is missing while the Web config is supplied, its CI job fails rather than publishing a package with broken native sign-in. A package built without any Firebase config still works locally and shows the setup status instead of pretending to sync. Desktop EXE/DEB use `file://` and cannot complete Firebase's browser popup flow; use the HTTPS PWA for Google sign-in there. Google account sync is distinct from live Google Calendar integration; calendar `.ics` exports still require importing again after changes.
+If a native project file is missing while the Web config is supplied, its CI job fails rather than publishing a package with broken native sign-in. A package built without any Firebase config excludes the native Firebase plugin (which requires a plist at launch), still works locally, and shows the setup status instead of pretending to sync. Desktop packages use a custom app scheme and cannot complete Firebase's browser popup flow; use the HTTPS PWA for Google sign-in there. Google account sync is distinct from live Google Calendar integration; calendar `.ics` exports still require importing again after changes.
 
 ## Calendar rules
 

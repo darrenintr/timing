@@ -1,12 +1,27 @@
 """Configure generated Capacitor projects for Google login, when Firebase files exist."""
 import base64
+import json
 import os
 import plistlib
 import sys
 from pathlib import Path
 
 platform = sys.argv[1]
-if platform == 'android':
+if platform in ('prepare-android', 'prepare-ios'):
+    target = platform.removeprefix('prepare-')
+    config = os.environ.get('TIMING_FIREBASE_CONFIG')
+    encoded = os.environ.get('TIMING_FIREBASE_ANDROID_JSON_BASE64' if target == 'android' else 'TIMING_FIREBASE_IOS_PLIST_BASE64')
+    if bool(config) != bool(encoded):
+        sys.exit(f'Firebase web and {target} native configuration must be supplied together')
+    config_file = Path('capacitor.config.json')
+    settings = json.loads(config_file.read_text())
+    settings[target] = {'includePlugins': ['@capacitor-firebase/authentication'] if config else []}
+    config_file.write_text(json.dumps(settings, indent=2) + '\n')
+    print(f'{target} Firebase plugin ' + ('enabled' if config else 'excluded (no Firebase project configured)'))
+elif platform == 'android':
+    if not os.environ.get('TIMING_FIREBASE_CONFIG'):
+        print('Android local-only build: no native Firebase plugin')
+        sys.exit(0)
     variables = Path('android/variables.gradle')
     variables.write_text(variables.read_text().rstrip() + "\n\next.rgcfaIncludeGoogle = true\next.androidxCredentialsVersion = '1.3.0'\n")
     encoded = os.environ.get('TIMING_FIREBASE_ANDROID_JSON_BASE64')
@@ -17,6 +32,9 @@ if platform == 'android':
     print('Android Google sign-in dependency enabled; native project file ' + ('installed' if encoded else 'awaiting setup'))
 
 elif platform == 'ios':
+    if not os.environ.get('TIMING_FIREBASE_CONFIG'):
+        print('iOS local-only build: no native Firebase plugin')
+        sys.exit(0)
     podfile = Path('ios/App/Podfile')
     content = podfile.read_text().replace('  # Add your Pods here',
       "  pod 'CapacitorFirebaseAuthentication/Google', :path => '../../node_modules/@capacitor-firebase/authentication'\n  # Add your Pods here")
