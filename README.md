@@ -17,7 +17,9 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
 | iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
 
-The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK and `python3 scripts/configure-native.py android` / `ios` after adding each platform. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing, widgets, and system notifications are not implemented yet.
+The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK. Run `python3 scripts/configure-native.py android` and `python3 scripts/install-android-widget.py` for Android; run `python3 scripts/configure-native.py ios` and `ruby scripts/install-ios-widget.rb` for iOS. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing and system notifications still need separate setup.
+
+Android and iOS packages include a **Timing timetable & homework** home-screen widget and the Timing launcher icon. Launch the app once after installing it, then add the widget from your device's widget picker. It shows the Hong Kong day's printed A–F timetable and the next open homework items, including deadlines recalculated after day overrides. Edits and account changes refresh it immediately; the iOS WidgetKit timeline and Android daily updates advance the date while the app is closed. The iOS widget uses the `group.io.github.darrenintr.timing` App Group in both the app and extension: device signing must provision this group for both bundle IDs (`io.github.darrenintr.timing` and `io.github.darrenintr.timing.widget`). The CI IPA remains unsigned and needs both targets signed together for installation.
 
 ## Google account sync setup
 
@@ -37,7 +39,7 @@ If a native project file is missing while the Web config is supplied, its CI job
 - Lessons stop after the S6 last school day on 1 February 2027, even though the school calendar continues for other year groups.
 - Homework stores a subject and the day it was assigned. The due lesson is recomputed when a date is marked as no school, restored to normal, or given another cycle letter.
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
-- Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, and live Google/Apple Calendar synchronization are future platform integrations.
+- Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Notifications and live Google/Apple Calendar synchronization are future platform integrations.
 
 ## Homework
 

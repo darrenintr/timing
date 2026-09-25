@@ -37,6 +37,7 @@ jobs:
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_ANDROID_JSON_BASE64: ${{ secrets.TIMING_FIREBASE_ANDROID_JSON_BASE64 }}
+      - run: python3 scripts/install-android-widget.py
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
         working-directory: android
@@ -71,6 +72,10 @@ jobs:
           else
             echo 'APK release-signed; Google sync remains disabled until Firebase configuration is supplied.'
           fi
+      - name: Verify widget is registered in APK
+        run: |
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/aapt" dump xmltree dist/Timing-android.apk AndroidManifest.xml | grep -q 'TimingWidgetProvider'
       - uses: actions/upload-artifact@v4
         with:
           name: Timing-Android-APK
@@ -98,11 +103,14 @@ jobs:
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
+      - run: ruby scripts/install-ios-widget.rb
       - run: rm Podfile.lock && pod install
         if: ${{ vars.TIMING_FIREBASE_CONFIG != '' }}
         working-directory: ios/App
       - name: Compile without signing
         run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build
+      - name: Verify widget extension is embedded
+        run: test -d build/ios/Build/Products/Release-iphoneos/App.app/PlugIns/TimingWidget.appex
       - name: Package unsigned IPA
         run: |
           mkdir -p dist/Payload
