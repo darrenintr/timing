@@ -25,6 +25,24 @@ test('a manually chosen date stays fixed, while filters and overdue state work',
   assert.throws(() => normalizeHomework({...input,dueMode:'date',dueDate:'2026-10-01'}), /due date/);
 });
 
+test('a specific date uses the first subject lesson that day and follows timetable overrides', () => {
+  const item = normalizeHomework({...input,dueMode:'date',dueDate:'2026-10-12'});
+  const due = resolveHomework(item).due;
+  assert.equal(due.date, '2026-10-12');
+  assert.equal(due.cycle, 'B');
+  assert.equal(due.period, 2); // Economics also meets in period 3.
+  const ics = calendarICS([item], {}, 'summer');
+  assert.match(ics, /UID:homework-[^\r\n]+\r\n[^]*?DTSTART;TZID=Asia\/Hong_Kong:20261012T085000/);
+
+  const changed = resolveHomework(item, {'2026-10-12':{type:'regular',cycle:'A'}}).due;
+  assert.equal(changed.date, '2026-10-12');
+  assert.equal(changed.period, 1);
+  const cancelled = resolveHomework(item, {'2026-10-12':{type:'holiday'}}).due;
+  assert.equal(cancelled.date, '2026-10-12');
+  assert.equal(cancelled.period, null);
+  assert.match(calendarICS([item], {'2026-10-12':{type:'holiday'}}, 'summer'), /UID:homework-[^\r\n]+\r\n[^]*?DTSTART;TZID=Asia\/Hong_Kong:20261012T170000/);
+});
+
 test('calendar includes the assignment reminder and omits completed homework', () => {
   const item = normalizeHomework(input);
   const ics = calendarICS([item], {}, 'summer', new Date('2026-09-24T00:00:00Z'));

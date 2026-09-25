@@ -97,7 +97,8 @@ export function nextLesson(subject, afterDate, overrides = {}) {
 export function resolveHomework(homework, overrides = {}) {
   // Store the rule, not a date: an override will recalculate this occurrence.
   const due = homework.dueMode === 'date'
-    ? (homework.dueDate ? { date: homework.dueDate, subject: homework.subject, period: null } : null)
+    ? (homework.dueDate ? (lessonsOn(homework.dueDate, overrides).find(lesson => lesson.subject === homework.subject)
+      ?? { date: homework.dueDate, subject: homework.subject, period: null }) : null)
     : nextLesson(homework.subject, homework.afterDate, overrides);
   return { ...homework, due };
 }

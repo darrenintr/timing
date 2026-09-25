@@ -1,8 +1,16 @@
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { build } from 'esbuild';
+
+const firebase = JSON.parse(process.env.TIMING_FIREBASE_CONFIG || '{}');
+if (Object.keys(firebase).length && !['apiKey', 'authDomain', 'projectId', 'appId'].every(key => firebase[key])) {
+  throw new Error('TIMING_FIREBASE_CONFIG must include apiKey, authDomain, projectId, and appId.');
+}
 
 rmSync('www', { recursive: true, force: true });
 mkdirSync('www/src/fonts', { recursive: true });
-mkdirSync('www/src/vendor', { recursive: true });
 for (const name of ['index.html', 'icon.svg', 'icon-maskable.svg', 'icon-monochrome.svg', 'manifest.webmanifest', 'sw.js']) cpSync(name, `www/${name}`);
-for (const name of ['main.js', 'schedule.js', 'homework.js', 'sync-model.js', 'sync.js', 'firebase-config.js', 'vendor/firebase.js', 'vendor/capacitor.js', 'calendar-export.js', 'icons.js', 'shapes.js', 'style.css', 'fonts/roboto-flex.woff2', 'fonts/fraunces.woff2', 'fonts/fraunces-italic.woff2', 'fonts/jetbrains-mono.woff2', 'fonts/OFL.txt', 'fonts/OFL-Fraunces.txt', 'fonts/OFL-JetBrainsMono.txt']) cpSync(`src/${name}`, `www/src/${name}`);
-console.log('Copied application assets into www/');
+cpSync('src/style.css', 'www/src/style.css');
+for (const name of ['roboto-flex.woff2', 'fraunces.woff2', 'fraunces-italic.woff2', 'jetbrains-mono.woff2']) cpSync(`src/fonts/${name}`, `www/src/fonts/${name}`);
+await build({entryPoints:['src/main.js'], outfile:'www/src/main.js', bundle:true, platform:'browser', format:'esm', minify:true,
+  define:{__TIMING_FIREBASE_CONFIG__:JSON.stringify(firebase)}});
+console.log(`Built web assets in www/ (${firebase.projectId ? 'Google sync configured' : 'local only until Firebase is configured'})`);

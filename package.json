@@ -5,7 +5,7 @@
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
-    "dev": "python3 -m http.server 5173",
+    "dev": "npm run package:web && python3 -m http.server 5173 -d www",
     "test": "node --test",
     "package:web": "node scripts/copy-web.mjs",
     "package:windows": "npm run package:web && electron-builder --publish never --win portable --x64",
@@ -13,24 +13,52 @@
     "vendor:firebase": "node scripts/vendor-firebase.mjs"
   },
   "dependencies": {
-    "@capacitor-firebase/authentication": "7.5.0",
-    "@capacitor/core": "^7.0.0"
+    "@capacitor-firebase/authentication": "^7.5.0",
+    "@capacitor/core": "^7.0.0",
+    "firebase": "^11.10.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.0.0",
     "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
     "electron": "^37.0.0",
     "electron-builder": "^26.0.0",
-    "esbuild": "^0.28.2",
-    "firebase": "~11.10.0"
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "io.github.darrenintr.timing",
     "productName": "Timing",
-    "directories": {"output": "dist"},
-    "files": ["desktop/main.cjs", "www/**/*", "package.json"],
-    "win": {"target": [{"target": "portable", "arch": ["x64"]}], "artifactName": "Timing-${version}-windows-${arch}.${ext}"},
-    "linux": {"target": [{"target": "deb", "arch": ["x64"]}], "category": "Education", "maintainer": "Timing maintainers <darrenintr@users.noreply.github.com>", "artifactName": "Timing-${version}-linux-${arch}.${ext}"}
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "www/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Timing-${version}-windows-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Education",
+      "maintainer": "Timing maintainers <darrenintr@users.noreply.github.com>",
+      "artifactName": "Timing-${version}-linux-${arch}.${ext}"
+    }
   }
 }

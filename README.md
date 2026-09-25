@@ -4,7 +4,7 @@ A local-first school schedule prototype for an S6 student in class 6B. It includ
 
 ## Run
 
-Requires Node.js 20 or newer for tests and Python 3 for the local server. Run `npm run dev` and open `http://localhost:5173`. Use `npm test` for the schedule rules. The repository is a static site and needs no build step. Host it over HTTPS, then install it from a supported browser to use the offline PWA on iPad, Android, or Ubuntu.
+Requires Node.js 20 or newer for tests and Python 3 for the local server. Run `npm ci`, then `npm run dev` and open `http://localhost:5173`. Use `npm test` for the schedule and sync rules. `npm run package:web` bundles the static site into `www/`. Host those assets over HTTPS, then install the PWA from a supported browser.
 
 ## Native packages
 
@@ -12,12 +12,23 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |
-| Android | `Timing-Android-APK` | Release APK signed with the Timing key from the `ANDROID_KEYSTORE_*` repository secrets, for direct installation. Its SHA-1 must match the one registered in Firebase (the build checks this). |
+| Android | `Timing-Android-APK` | Debug APK by default; release signed with a stable key when `ANDROID_KEYSTORE_*` secrets are configured. Its SHA-1 must match Firebase for Google sign-in. |
 | Windows | `Timing-Windows-EXE` | Portable x64 EXE; Windows may warn because it is not code-signed. |
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
 | iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
 
-The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm install`, `npm run package:web`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK, or `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing, widgets, and system notifications are not implemented yet.
+The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK and `python3 scripts/configure-native.py android` / `ios` after adding each platform. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing, widgets, and system notifications are not implemented yet.
+
+## Google account sync setup
+
+The header has **Sign in with Google**. Homework, smaller steps, school-day overrides, and summer/winter lesson times synchronize by Firebase account; the underlying school calendar stays bundled in the app. It keeps an offline copy and merges existing local work on first sign-in. The app cannot complete a Google login until a Firebase project is connected; no project credentials are bundled with this public repository.
+
+1. Create a Firebase project, register a Web app and Android/iOS apps with the ID `io.github.darrenintr.timing`, enable **Authentication → Google**, and create a **Cloud Firestore** database. Deploy the owner-only rules in [`firestore.rules`](firestore.rules). Add the hosted PWA's domain to Firebase Authentication's authorized domains.
+2. Set the repository Actions variable `TIMING_FIREBASE_CONFIG` to the public Web app JSON config, e.g. `{"apiKey":"...","authDomain":"...firebaseapp.com","projectId":"...","appId":"..."}`. Locally, pass the same JSON environment variable to `npm run package:web`. These are public client settings, not a service-account key.
+3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. For stable Google sign-in across releases, set `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` and register that key's SHA-1 in Firebase. The signed build checks the SHA-1. Without a release key the workflow publishes a debug APK.
+4. For iOS CI, set `TIMING_FIREBASE_IOS_PLIST_BASE64` to the base64 contents of `GoogleService-Info.plist` for the iOS app. The build script includes the plist and its reversed client ID URL scheme. The IPA is still unsigned and needs Apple signing before installation.
+
+If a native project file is missing while the Web config is supplied, its CI job fails rather than publishing a package with broken native sign-in. A package built without any Firebase config excludes the native Firebase plugin (which requires a plist at launch), still works locally, and shows the setup status instead of pretending to sync. Desktop packages use a custom app scheme and cannot complete Firebase's browser popup flow; use the HTTPS PWA for Google sign-in there. Google account sync is distinct from live Google Calendar integration; calendar `.ics` exports still require importing again after changes.
 
 ## Calendar rules
 
@@ -26,13 +37,13 @@ The mobile projects are generated in CI with Capacitor from the `www/` assets. T
 - Lessons stop after the S6 last school day on 1 February 2027, even though the school calendar continues for other year groups.
 - Homework stores a subject and the day it was assigned. The due lesson is recomputed when a date is marked as no school, restored to normal, or given another cycle letter.
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
-- Data lives in this browser's local storage and, after signing in with Google, is also synced through Firestore (see **Sync**). Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, and live Google/Apple Calendar synchronization are future platform integrations.
+- Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Native widgets, notifications, and live Google/Apple Calendar synchronization are future platform integrations.
 
 ## Homework
 
 Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
 
-**Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps a fixed deadline for work that is not tied to a lesson. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
+**Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps the selected date and uses the first lesson of that subject on that day, including its period and start time in the calendar export. If no confirmed subject lesson exists that day, the date stays fixed with a 5:00 PM fallback. Timetable overrides update the period without moving the date. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
 
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
 
@@ -40,11 +51,9 @@ Source: user-supplied school calendar screenshots and 6B class timetable. Verify
 
 Settings → **Sign in with Google** keeps homework, day overrides and the summer/winter setting the same on every device signed in with the same account. It works offline: edits are kept on the device and uploaded when the connection returns.
 
-- `src/sync-model.js` holds the pure rules (tested in `test/sync-model.test.js`): each homework item, day override and the lesson-time setting carries the time of its last change, the newer copy wins record by record, and deleted homework leaves a small marker so another device cannot bring it back. Timestamps come from each device's clock.
-- `src/sync.js` talks to Firebase. Cloud layout: `users/{uid}/homework/{id}`, `users/{uid}/overrides/{date}`, `users/{uid}/meta/settings`. `firestore.rules` limits every account to its own documents; paste it into Firestore → Rules after changing it.
-- `src/firebase-config.js` identifies the Firebase project (public values, not secrets). `src/vendor/firebase.js` is the bundled Firebase SDK so the app still needs no build step; rebuild it with `npm install && npm run vendor:firebase`.
-- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on every push to `main`. Its domain must be listed under Firebase → Authentication → Settings → Authorized domains. Bump `CACHE` in `sw.js` when shipping changes, or installed copies keep the old files.
-- Google blocks its sign-in page inside embedded app views, so each app platform signs in its own way. Browser: Google popup. Android: the native account picker from `@capacitor-firebase/authentication` (`skipNativeAuth`, so the ID token is handed to the same Firebase JS session); the build copies `google-services.json` into the generated project. The iOS (`GoogleService-Info.plist` is stored for later; the plugin is excluded from iOS in `capacitor.config.json`) and desktop packages do not sign in yet and keep working locally.
+- `src/sync-data.js` merges local changes record by record and retains deletion markers; `src/cloud.js` signs in and synchronizes the document at `timingUsers/{uid}/data/s6`. The accompanying `firestore.rules` restrict access to each account's own document.
+- Firebase Web configuration is provided through the `TIMING_FIREBASE_CONFIG` Actions variable or local environment variable. The public Firebase project files on the feature branch are reference material; CI includes the native plugin only when matching Web and native configuration are provided. Desktop packages remain local because the Electron app scheme cannot complete Firebase popup sign-in.
+- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on pushes to `main`. Add its domain to Firebase Authentication's authorized domains. The service worker cache version in `sw.js` must change with a release.
 
 ## Design
 

@@ -2,35 +2,86 @@ import { addDays, dayInfo, lessonsOn, LAST_S6_DAY, periodTimes, resolveHomework,
 import { homeworkStatus, homeworkSubjects, normalizeHomework, reminderDays, visibleHomework } from './homework.js';
 import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
-import { diffState, hasChanges, migrate, snapshotOf, stampChanges } from './sync-model.js';
+import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
+import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
 const saved = (() => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } })();
+const read = name => { try { return JSON.parse(localStorage.getItem(name)); } catch { return null; } };
+const guestKey = `${key}:guest`;
+const deviceKey = `${key}:device`;
+const device = localStorage.getItem(deviceKey) || crypto.randomUUID();
+localStorage.setItem(deviceKey, device);
+let activeKey = guestKey;
+let activeSnapshot = read(guestKey) || fromLegacy(saved, device);
+localStorage.setItem(guestKey, JSON.stringify(activeSnapshot));
+let account = null, syncBusy = false, syncNotice = cloudConfigured ? 'Saved on this device. Sign in to sync.' : 'Google sync needs a Firebase project configuration. Your data stays on this device.';
+let syncError = false, syncing = false, revision = revisionClock(device, activeSnapshot);
+const local = materialize(activeSnapshot);
 const state = {
   date: new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Hong_Kong'}),
-  ...migrate(saved),
+  homework: local.homework,
+  overrides: local.overrides,
+  timeMode: local.timeMode,
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set(),
-  sync: {status: 'loading'}
+  composing: false, expanded: new Set()
 };
 const app = document.querySelector('#app');
-let synced = snapshotOf(state);
-let sync = null;
-const save = () => localStorage.setItem(key, JSON.stringify({
-  homework: state.homework, deleted: state.deleted, overrides: state.overrides, overrideStamps: state.overrideStamps,
-  timeMode: state.timeMode, timeModeStamp: state.timeModeStamp, view: state.view
-}));
-// Every edit ends in persist(): it works out which records changed, stamps them, saves, and uploads them.
-function persist() {
-  const next = snapshotOf(state);
-  const changes = diffState(synced, next);
-  synced = next;
-  if (hasChanges(changes)) { stampChanges(state, changes); sync?.push(changes); }
-  save();
+if (nativeApp) document.documentElement.classList.add('native-app');
+function showSyncStatus() {
+  const panel = app.querySelector('.sync-indicator');
+  if (panel) {
+    panel.classList.toggle('error', syncError);
+    panel.textContent = syncNotice;
+  }
 }
-save(); // Keep the timestamps given to data saved before sync existed.
+const currentData = () => ({homework:state.homework, overrides:state.overrides, timeMode:state.timeMode});
+function persist() {
+  const before = JSON.stringify(activeSnapshot);
+  activeSnapshot = captureChanges(activeSnapshot, materialize(activeSnapshot), currentData(), revision);
+  localStorage.setItem(activeKey, JSON.stringify(activeSnapshot));
+  if (account && before !== JSON.stringify(activeSnapshot)) void runSync();
+}
+function applySnapshot(snapshot) {
+  activeSnapshot = snapshot;
+  revision = revisionClock(device, snapshot);
+  Object.assign(state, materialize(snapshot));
+  localStorage.setItem(activeKey, JSON.stringify(snapshot));
+  // Do not erase an in-progress homework form while a background sync finishes.
+  if (!document.activeElement?.closest('form')) render();
+}
+async function runSync() {
+  if (syncing || !account) return;
+  if (!navigator.onLine) { syncNotice = 'Offline. Changes are saved on this device and will sync when connected.'; showSyncStatus(); return; }
+  syncing = true; syncError = false; syncNotice = 'Syncing…'; showSyncStatus();
+  const uid = account.uid;
+  try {
+    do {
+      const sent = activeSnapshot;
+      const merged = await syncAccount(uid, sent);
+      if (uid !== account?.uid) return;
+      const latest = mergeSnapshots(activeSnapshot, merged);
+      applySnapshot(latest);
+      if (localStorage.getItem(guestKey)) {
+        localStorage.removeItem(guestKey);
+        localStorage.removeItem(key);
+      }
+      if (JSON.stringify(latest) === JSON.stringify(merged)) break;
+    } while (account?.uid === uid);
+    syncNotice = 'Synced with Google · ' + new Date().toLocaleTimeString('en-HK', {hour:'numeric', minute:'2-digit'});
+  } catch (error) { syncError = true; syncNotice = `${error.message} Changes are saved on this device.`; }
+  finally { syncing = false; showSyncStatus(); }
+}
+async function activateAccount(user) {
+  if (!user?.uid) return;
+  account = user;
+  activeKey = `${key}:user:${user.uid}`;
+  const cached = read(activeKey) || emptySnapshot();
+  applySnapshot(mergeSnapshots(cached, read(guestKey) || emptySnapshot()));
+  await runSync();
+}
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const format = (date, options) => new Intl.DateTimeFormat('en-HK', {...options, timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const readable = date => format(date, {weekday:'long', day:'numeric', month:'long', year:'numeric'});
@@ -160,7 +211,7 @@ function duePreview(item) {
   if (!item.due) return `<span class="warn">No confirmed lesson before S6 ends.</span>`;
   const when = format(item.due.date, {weekday:'long', day:'numeric', month:'short'});
   return item.due.period
-    ? `Due <strong>${when}</strong> · <span class="mono">Day ${escapeHTML(item.due.cycle)} · P${item.due.period}</span><br><small>Moves automatically if that school day changes.</small>`
+    ? `Due <strong>${when}</strong> · <span class="mono">Day ${escapeHTML(item.due.cycle)} · P${item.due.period}</span><br><small>${item.dueMode === 'date' ? 'The date stays fixed; the period follows the first subject lesson that day.' : 'Moves automatically if that school day changes.'}</small>`
     : `Due <strong>${when}</strong> · <span class="mono">17:00</span><br><small>Fixed date, not tied to a lesson.</small>`;
 }
 
@@ -234,30 +285,17 @@ function homeworkView() {
 
 /* ---------- Settings (the deeper layer) ---------- */
 
-const syncLines = {
-  loading: 'Starting…', syncing: 'Syncing…', offline: 'Offline · changes upload when you reconnect', error: 'Sync problem'
-};
 function syncSection() {
-  const sync = state.sync;
-  if (sync.status === 'unavailable') return `<section class="block setting">${label('Sync')}
-      <p class="hint">Google sign-in is not available in this version of the app yet. Install Timing from the website to sync; this device keeps its own copy.</p></section>`;
-  const message = sync.message ? `<p class="form-error">${escapeHTML(sync.message)}</p>` : '';
-  if (!sync.email) return `<section class="block setting">${label('Sync')}
-      <button class="button" data-sync="signin" ${sync.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>${message}
-      <p class="hint">Keeps homework, day changes and lesson times the same on every device signed in with the same Google account. Homework already on this device is kept and uploaded.</p></section>`;
-  const when = sync.lastSynced ? new Intl.DateTimeFormat('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Hong_Kong'}).format(sync.lastSynced) : '';
-  const line = sync.status === 'synced' ? `Synced${when ? ` · <span class="mono">${when}</span>` : ''}` : syncLines[sync.status] ?? '';
   return `<section class="block setting">${label('Sync')}
-      <p class="setting-date">${escapeHTML(sync.email)}</p>
-      <p class="hint" role="status">${line}</p>${message}
-      <button class="link muted" data-sync="signout">Sign out</button>
-      <p class="hint">Signing out keeps a copy on this device but stops syncing it.</p></section>`;
+      <p class="hint" role="status">${escapeHTML(syncNotice)}</p>
+      ${account ? `<p class="setting-date">${escapeHTML(account.email || account.displayName || 'Google account')}</p><button class="link muted" data-sync="signout">Sign out</button>` : `<button class="button" data-sync="signin" ${syncBusy ? 'disabled' : ''}>Sign in with Google</button>`}
+      <p class="hint">Homework and timetable changes are saved here and synchronized when your Google account is connected.</p></section>`;
 }
 
 function settingsView() {
   const override = state.overrides[state.date] ?? {};
   const info = dayInfo(state.date, state.overrides);
-  return `<header class="hero"><h1 class="display">Settings</h1><p class="sub">Class 6B · ${state.sync.email ? 'synced with your Google account' : 'data stays on this device'}</p></header>
+  return `<header class="hero"><h1 class="display">Settings</h1><p class="sub">Class 6B · ${account ? 'synced with your Google account' : 'data stays on this device'}</p></header>
     ${syncSection()}
     <section class="block setting">
       ${label('Lesson times')}
@@ -297,6 +335,7 @@ function render() {
     <div class="tabs">${tab('today', 'Today')}${tab('calendar', 'Calendar')}${tab('homework', 'Homework')}</div>
     <button class="icon-btn settings-btn ${state.view === 'settings' ? 'active' : ''}" data-view="settings" aria-label="Settings" ${state.view === 'settings' ? 'aria-current="page"' : ''}>${icon('tune')}</button>
   </nav>
+  <p class="sync-indicator ${syncError ? 'error' : ''}" role="status">${escapeHTML(syncNotice)}</p>
   <main>${body}</main>
 </div>`;
 }
@@ -339,8 +378,8 @@ app.addEventListener('click', event => {
     state.homework = state.homework.filter(h => h.id !== button.dataset.remove);
     if (state.editingId === button.dataset.remove) state.editingId = null;
   }
-  if (button.dataset.sync === 'signin') sync?.signIn();
-  if (button.dataset.sync === 'signout') sync?.signOut();
+  if (button.dataset.sync === 'signin') { void signIn(); return; }
+  if (button.dataset.sync === 'signout') { void signOut(); return; }
   if (button.dataset.export !== undefined) {
     const url = URL.createObjectURL(new Blob([calendarICS(state.homework, state.overrides, state.timeMode)], {type:'text/calendar;charset=utf-8'}));
     const link = document.createElement('a'); link.href = url; link.download = 'timing-s6-calendar.ics'; link.click();
@@ -361,6 +400,26 @@ app.addEventListener('toggle', event => {
   if (panel.matches?.('.composer')) state.composing = panel.open;
   if (panel.matches?.('.more')) panel.open ? state.expanded.add(panel.dataset.id) : state.expanded.delete(panel.dataset.id);
 }, true);
+async function signIn() {
+  if (syncBusy) return;
+  syncBusy = true; syncError = false; render();
+  try {
+    const user = await googleSignIn();
+    if (!user) throw new Error('Google sign-in did not return an account.');
+    await activateAccount(user);
+  } catch (error) { syncError = true; syncNotice = error.message; }
+  finally { syncBusy = false; render(); }
+}
+async function signOut() {
+  try {
+    await googleSignOut();
+    account = null;
+    activeKey = guestKey;
+    applySnapshot(read(guestKey) || emptySnapshot());
+    syncError = false; syncNotice = 'Signed out. New changes will stay on this device.';
+  } catch (error) { syncError = true; syncNotice = error.message; }
+  render();
+}
 app.addEventListener('change', event => {
   const control = event.target.id || event.target.name;
   if (control === 'homework-filter') { state.filter = event.target.value; render(); return; }
@@ -439,17 +498,12 @@ clock?.unref?.();
 
 /* ---------- Sync ---------- */
 
-// A change from another device must not wipe out a form that is being typed in; render once focus leaves it.
-let renderPending = false;
-const typing = () => { const active = globalThis.document?.activeElement; return Boolean(active && app.contains?.(active) && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName)); };
-function renderSoon() { if (typing()) renderPending = true; else { renderPending = false; render(); } }
-app.addEventListener('focusout', () => setTimeout(() => { if (renderPending) renderSoon(); }, 0));
-const onRemoteChange = () => { synced = snapshotOf(state); save(); renderSoon(); };
-const onStatus = status => { state.sync = status; if (state.view === 'settings') renderSoon(); };
-if (typeof window !== 'undefined') {
-  import('./sync.js')
-    .then(({ startSync }) => startSync({ state, onRemoteChange, onStatus }))
-    .then(instance => { sync = instance; })
-    .catch(() => onStatus({ status: 'error', message: 'Sync could not start. Check your connection and reload.' }));
-} else state.sync = { status: 'unavailable' };
+if (cloudConfigured) {
+  void currentAccount().then(user => user && activateAccount(user)).catch(error => {
+    syncError = true; syncNotice = `${error.message} Local data is available.`; render();
+  });
+  window.addEventListener('online', () => { if (account) void runSync(); });
+  window.addEventListener('focus', () => { if (account) void runSync(); });
+  setInterval(() => { if (account && document.visibilityState === 'visible') void runSync(); }, 30_000);
+}
 if (globalThis.navigator && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});

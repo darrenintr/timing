@@ -2,13 +2,7 @@
   "appId": "io.github.darrenintr.timing",
   "appName": "Timing",
   "webDir": "www",
-  "ios": {
-    "includePlugins": []
-  },
-  "plugins": {
-    "FirebaseAuthentication": {
-      "skipNativeAuth": true,
-      "providers": ["google.com"]
-    }
-  }
+  "android": {"includePlugins": []},
+  "ios": {"includePlugins": []},
+  "plugins": {"FirebaseAuthentication": {"providers": ["google.com"]}}
 }
