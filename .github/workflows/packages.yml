@@ -55,7 +55,6 @@ jobs:
             echo 'No persistent release key supplied; publishing debug APK.'
             exit 0
           fi
-          if [ -z "$TIMING_FIREBASE_CONFIG" ]; then echo '::error::Set TIMING_FIREBASE_CONFIG when signing a Google-enabled release APK.'; exit 1; fi
           (cd android && ./gradlew assembleRelease)
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/timing.jks"
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
@@ -65,9 +64,13 @@ jobs:
             --out dist/Timing-android.apk "$RUNNER_TEMP/aligned.apk"
           rm "$RUNNER_TEMP/timing.jks"
           SIGNED=$("$BUILD_TOOLS/apksigner" verify --print-certs dist/Timing-android.apk | sed -n 's/.*certificate SHA-1 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]')
-          REGISTERED=$(node -e "console.log(require('./android/app/google-services.json').client[0].oauth_client.find(c => c.android_info).android_info.certificate_hash.toLowerCase())")
-          echo "APK signed with SHA-1 $SIGNED (Firebase has $REGISTERED)"
-          if [ "$SIGNED" != "$REGISTERED" ]; then echo "::error::The signing key does not match the SHA-1 registered in Firebase, so Google sign-in would fail."; exit 1; fi
+          if [ -n "$TIMING_FIREBASE_CONFIG" ]; then
+            REGISTERED=$(node -e "console.log(require('./android/app/google-services.json').client[0].oauth_client.find(c => c.android_info).android_info.certificate_hash.toLowerCase())")
+            echo "APK signed with SHA-1 $SIGNED (Firebase has $REGISTERED)"
+            if [ "$SIGNED" != "$REGISTERED" ]; then echo "::error::The signing key does not match the SHA-1 registered in Firebase, so Google sign-in would fail."; exit 1; fi
+          else
+            echo 'APK release-signed; Google sync remains disabled until Firebase configuration is supplied.'
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: Timing-Android-APK
