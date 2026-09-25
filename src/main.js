@@ -4,6 +4,7 @@ import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
 import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
 import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
+import { refreshWidget } from './native-widget.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
@@ -42,6 +43,7 @@ function persist() {
   const before = JSON.stringify(activeSnapshot);
   activeSnapshot = captureChanges(activeSnapshot, materialize(activeSnapshot), currentData(), revision);
   localStorage.setItem(activeKey, JSON.stringify(activeSnapshot));
+  refreshWidget(state, today());
   if (account && before !== JSON.stringify(activeSnapshot)) void runSync();
 }
 function applySnapshot(snapshot) {
@@ -49,6 +51,7 @@ function applySnapshot(snapshot) {
   revision = revisionClock(device, snapshot);
   Object.assign(state, materialize(snapshot));
   localStorage.setItem(activeKey, JSON.stringify(snapshot));
+  refreshWidget(state, today());
   // Do not erase an in-progress homework form while a background sync finishes.
   if (!document.activeElement?.closest('form')) render();
 }
@@ -489,6 +492,8 @@ app.addEventListener('submit', event => {
   }
 });
 render();
+refreshWidget(state, today());
+document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') refreshWidget(state, today()); });
 // Keep the "now" lesson current without disturbing a form that is being filled in.
 const clock = setInterval(() => {
   const active = globalThis.document?.activeElement;
