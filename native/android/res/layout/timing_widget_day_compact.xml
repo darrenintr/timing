@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today · 4×2: now on the left, the next four lessons on paper. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/timing_bg_surface" android:paddingStart="16dp" android:paddingEnd="16dp"
+    android:paddingTop="14dp" android:paddingBottom="16dp">
+    <LinearLayout android:layout_width="150dp" android:layout_height="match_parent" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+            <ImageView android:id="@+id/timing_badge" android:layout_width="40dp" android:layout_height="40dp"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/timing_corner" style="@style/TimingSerif" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:layout_marginStart="10dp" android:textSize="22sp" android:text="Friday" />
+        </LinearLayout>
+        <FrameLayout android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+        <TextView android:id="@+id/timing_eyebrow" style="@style/TimingEyebrow" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="@color/timing_accent" android:text="Now · 18 min" />
+        <TextView android:id="@+id/timing_title" style="@style/TimingSerif" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="24sp" android:text="Geography" />
+        <TextView android:id="@+id/timing_detail" style="@style/TimingMono" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="GER · CK" />
+        <ImageView android:id="@+id/timing_wave" android:layout_width="match_parent" android:layout_height="10dp"
+            android:layout_marginTop="8dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/timing_rows" android:layout_width="0dp" android:layout_height="match_parent"
+        android:layout_weight="1" android:layout_marginStart="14dp" android:orientation="vertical"
+        android:background="@drawable/timing_bg_panel" android:paddingStart="12dp" android:paddingEnd="12dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp" />
+</LinearLayout>

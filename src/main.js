@@ -4,7 +4,8 @@ import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
 import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
 import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
-import { refreshWidget } from './native-widget.js';
+import { onWidgetOpen, refreshWidget, takeWidgetCompletions } from './native-widget.js';
+import { completeFromWidget } from './widget-data.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
@@ -493,7 +494,22 @@ app.addEventListener('submit', event => {
 });
 render();
 refreshWidget(state, today());
-document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') refreshWidget(state, today()); });
+// Collect homework completed from a widget, then republish the snapshot.
+async function collectWidgetCompletions() {
+  const ids = await takeWidgetCompletions();
+  if (completeFromWidget(state.homework, ids)) { persist(); render(); }
+  else refreshWidget(state, today());
+}
+void collectWidgetCompletions();
+document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') void collectWidgetCompletions(); });
+onWidgetOpen(target => {
+  state.view = target.view;
+  if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; }
+  if (target.id) { state.filter = 'open'; state.subjectFilter = 'all'; state.expanded.add(target.id); }
+  render();
+  if (target.id) app.querySelector(`[data-id="${CSS.escape(target.id)}"]`)?.scrollIntoView({block:'center'});
+  if (target.compose) app.querySelector('#homework-form input[name="title"]')?.focus();
+});
 // Keep the "now" lesson current without disturbing a form that is being filled in.
 const clock = setInterval(() => {
   const active = globalThis.document?.activeElement;

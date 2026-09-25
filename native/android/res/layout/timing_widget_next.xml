@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Next · 2×1: the next lesson on the teal wash. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:gravity="center_vertical" android:background="@drawable/timing_bg_wash"
+    android:paddingStart="16dp" android:paddingEnd="16dp">
+    <TextView android:id="@+id/timing_eyebrow" style="@style/TimingEyebrow" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:textColor="@color/timing_accent" android:text="Next · 10:50" />
+    <TextView android:id="@+id/timing_title" style="@style/TimingSerif" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="22sp"
+        android:textColor="@color/timing_on_wash" android:text="Geography" />
+    <TextView android:id="@+id/timing_detail" style="@style/TimingMono" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textColor="@color/timing_on_wash2" android:text="GER · CK" />
+</LinearLayout>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Timing widget tokens: paper and ink, colour only where it means something. -->
+<resources>
+    <color name="timing_surface">#F3F1EC</color>
+    <color name="timing_paper">#FAF9F6</color>
+    <color name="timing_ink">#191C1B</color>
+    <color name="timing_ink2">#4A504E</color>
+    <color name="timing_ink3">#6B716F</color>
+    <color name="timing_faint">#8A908E</color>
+    <color name="timing_line">#E6E4DF</color>
+    <color name="timing_accent">#1F6A64</color>
+    <color name="timing_accent_deep">#154B47</color>
+    <color name="timing_accent_wash">#DCEFEB</color>
+    <color name="timing_on_accent">#FAF9F6</color>
+    <color name="timing_on_accent_now">#DCEFEB</color>
+    <color name="timing_on_wash">#0F3F3B</color>
+    <color name="timing_on_wash2">#2D5C57</color>
+    <color name="timing_warm">#B0532E</color>
+    <color name="timing_warm_deep">#9A4526</color>
+    <color name="timing_warm_wash">#FBE9E1</color>
+    <color name="timing_danger">#B3261E</color>
+</resources>

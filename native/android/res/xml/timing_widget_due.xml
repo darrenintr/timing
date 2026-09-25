@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp" android:minHeight="40dp" android:targetCellWidth="2" android:targetCellHeight="1"
+    android:resizeMode="horizontal" android:minResizeWidth="110dp" android:minResizeHeight="40dp"
+    android:maxResizeWidth="250dp" android:maxResizeHeight="110dp"
+    android:widgetCategory="home_screen" android:initialLayout="@layout/timing_widget_due" android:previewLayout="@layout/timing_widget_due"
+    android:description="@string/timing_widget_due_description" android:updatePeriodMillis="86400000" />
