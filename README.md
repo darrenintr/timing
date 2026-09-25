@@ -12,7 +12,7 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |
-| Android | `Timing-Android-APK` | Debug-signed APK for direct installation; not a Play Store release build. |
+| Android | `Timing-Android-APK` | Debug APK by default; release signed with a stable key when `ANDROID_KEYSTORE_*` secrets are configured. Its SHA-1 must match Firebase for Google sign-in. |
 | Windows | `Timing-Windows-EXE` | Portable x64 EXE; Windows may warn because it is not code-signed. |
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
 | iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
@@ -25,7 +25,7 @@ The header has **Sign in with Google**. Homework, smaller steps, school-day over
 
 1. Create a Firebase project, register a Web app and Android/iOS apps with the ID `io.github.darrenintr.timing`, enable **Authentication → Google**, and create a **Cloud Firestore** database. Deploy the owner-only rules in [`firestore.rules`](firestore.rules). Add the hosted PWA's domain to Firebase Authentication's authorized domains.
 2. Set the repository Actions variable `TIMING_FIREBASE_CONFIG` to the public Web app JSON config, e.g. `{"apiKey":"...","authDomain":"...firebaseapp.com","projectId":"...","appId":"..."}`. Locally, pass the same JSON environment variable to `npm run package:web`. These are public client settings, not a service-account key.
-3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. Register the **actual APK signing key's** SHA-1 in Firebase; the default CI debug key is ephemeral, so a persistent signing key is needed for Google login across CI builds.
+3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. For stable Google sign-in across releases, set `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` and register that key's SHA-1 in Firebase. The signed build checks the SHA-1. Without a release key the workflow publishes a debug APK.
 4. For iOS CI, set `TIMING_FIREBASE_IOS_PLIST_BASE64` to the base64 contents of `GoogleService-Info.plist` for the iOS app. The build script includes the plist and its reversed client ID URL scheme. The IPA is still unsigned and needs Apple signing before installation.
 
 If a native project file is missing while the Web config is supplied, its CI job fails rather than publishing a package with broken native sign-in. A package built without any Firebase config excludes the native Firebase plugin (which requires a plist at launch), still works locally, and shows the setup status instead of pretending to sync. Desktop packages use a custom app scheme and cannot complete Firebase's browser popup flow; use the HTTPS PWA for Google sign-in there. Google account sync is distinct from live Google Calendar integration; calendar `.ics` exports still require importing again after changes.
@@ -41,8 +41,33 @@ If a native project file is missing while the Web config is supplied, its CI job
 
 ## Homework
 
-Open the **Homework** tab in the top bar, or use **+ Add homework** on the schedule screen. The tab shows the form first, followed by open, completed, and subject filters. A lesson row also has a subject-specific add button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
+Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
 
 **Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps the selected date and uses the first lesson of that subject on that day, including its period and start time in the calendar export. If no confirmed subject lesson exists that day, the date stays fixed with a 5:00 PM fallback. Timetable overrides update the period without moving the date. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
 
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
+
+## Sync
+
+Settings → **Sign in with Google** keeps homework, day overrides and the summer/winter setting the same on every device signed in with the same account. It works offline: edits are kept on the device and uploaded when the connection returns.
+
+- `src/sync-data.js` merges local changes record by record and retains deletion markers; `src/cloud.js` signs in and synchronizes the document at `timingUsers/{uid}/data/s6`. The accompanying `firestore.rules` restrict access to each account's own document.
+- Firebase Web configuration is provided through the `TIMING_FIREBASE_CONFIG` Actions variable or local environment variable. The public Firebase project files on the feature branch are reference material; CI includes the native plugin only when matching Web and native configuration are provided. Desktop packages remain local because the Electron app scheme cannot complete Firebase popup sign-in.
+- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on pushes to `main`. Add its domain to Firebase Authentication's authorized domains. The service worker cache version in `sw.js` must change with a release.
+
+## Design
+
+The interface is deliberately quiet: one centred column, hairline dividers instead of cards, and three type families that carry the hierarchy instead of boxes and colour blocks.
+
+- **Fraunces** (serif) for headlines and whatever matters right now: the day name, the current lesson, the cycle day in italic.
+- **Roboto Flex** (sans) for reading text and controls, using weight (400 → 750) and small tracked capitals for section labels.
+- **JetBrains Mono** for things you scan in a column: times, rooms, teachers, periods.
+
+Colour is kept to meaning: teal for the cycle day and "now", terracotta for notices and things due today, red for overdue. It follows the system light or dark setting.
+
+The top bar has three views (Today, Calendar, Homework) and a settings button. Less frequent controls live one layer deeper:
+
+- **Settings:** summer or winter lesson times, overriding a day's status or cycle letter, calendar export, and notes about the data.
+- **Homework:** the add form is folded behind **+ Add homework**; reminders and notes are folded again inside it; each assignment's steps, notes, edit and delete sit behind its own disclosure.
+
+Fonts are bundled in `src/fonts` under the SIL Open Font License (Roboto Flex, Fraunces, JetBrains Mono). Material Symbols Rounded paths (`src/icons.js`) are under the Apache License 2.0. The app icon is available as `icon.svg`, `icon-maskable.svg` and `icon-monochrome.svg`.

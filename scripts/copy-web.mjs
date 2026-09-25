@@ -7,9 +7,10 @@ if (Object.keys(firebase).length && !['apiKey', 'authDomain', 'projectId', 'appI
 }
 
 rmSync('www', { recursive: true, force: true });
-mkdirSync('www/src', { recursive: true });
-for (const name of ['index.html', 'icon.svg', 'manifest.webmanifest', 'sw.js']) cpSync(name, `www/${name}`);
+mkdirSync('www/src/fonts', { recursive: true });
+for (const name of ['index.html', 'icon.svg', 'icon-maskable.svg', 'icon-monochrome.svg', 'manifest.webmanifest', 'sw.js']) cpSync(name, `www/${name}`);
 cpSync('src/style.css', 'www/src/style.css');
+for (const name of ['roboto-flex.woff2', 'fraunces.woff2', 'fraunces-italic.woff2', 'jetbrains-mono.woff2']) cpSync(`src/fonts/${name}`, `www/src/fonts/${name}`);
 await build({entryPoints:['src/main.js'], outfile:'www/src/main.js', bundle:true, platform:'browser', format:'esm', minify:true,
   define:{__TIMING_FIREBASE_CONFIG__:JSON.stringify(firebase)}});
 console.log(`Built web assets in www/ (${firebase.projectId ? 'Google sync configured' : 'local only until Firebase is configured'})`);
