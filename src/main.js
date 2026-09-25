@@ -1,19 +1,84 @@
 import { dayInfo, lessonsOn, LAST_S6_DAY, periodTimes, resolveHomework, subjects } from './schedule.js';
 import { homeworkStatus, homeworkSubjects, normalizeHomework, reminderDays, visibleHomework } from './homework.js';
 import { calendarICS } from './calendar-export.js';
+import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
+import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
 
 const key = 'timing-s6-v1';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } })();
+const read = name => { try { return JSON.parse(localStorage.getItem(name)); } catch { return null; } };
+const guestKey = `${key}:guest`;
+const deviceKey = `${key}:device`;
+const device = localStorage.getItem(deviceKey) || crypto.randomUUID();
+localStorage.setItem(deviceKey, device);
+let activeKey = guestKey;
+let activeSnapshot = read(guestKey) || fromLegacy(saved, device);
+localStorage.setItem(guestKey, JSON.stringify(activeSnapshot));
+let account = null, syncBusy = false, syncNotice = cloudConfigured ? 'Saved on this device. Sign in to sync.' : 'Google sync needs a Firebase project configuration. Your data stays on this device.';
+let syncError = false, syncing = false, clock = revisionClock(device, activeSnapshot);
+const local = materialize(activeSnapshot);
 const state = {
   date: new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Hong_Kong'}),
-  homework: Array.isArray(saved.homework) ? saved.homework : [],
-  overrides: saved.overrides || {},
-  timeMode: saved.timeMode === 'winter' ? 'winter' : 'summer',
+  homework: local.homework,
+  overrides: local.overrides,
+  timeMode: local.timeMode,
   view: saved.view === 'homework' ? 'homework' : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null
 };
 const app = document.querySelector('#app');
-const persist = () => localStorage.setItem(key, JSON.stringify({ homework: state.homework, overrides: state.overrides, timeMode: state.timeMode, view: state.view }));
+if (nativeApp) document.documentElement.classList.add('native-app');
+function showSyncStatus() {
+  const panel = app.querySelector('.sync-panel');
+  if (panel) {
+    panel.classList.toggle('error', syncError);
+    panel.querySelector('p').textContent = syncNotice;
+  }
+}
+const currentData = () => ({homework:state.homework, overrides:state.overrides, timeMode:state.timeMode});
+function persist() {
+  const before = JSON.stringify(activeSnapshot);
+  activeSnapshot = captureChanges(activeSnapshot, materialize(activeSnapshot), currentData(), clock);
+  localStorage.setItem(activeKey, JSON.stringify(activeSnapshot));
+  if (account && before !== JSON.stringify(activeSnapshot)) void runSync();
+}
+function applySnapshot(snapshot) {
+  activeSnapshot = snapshot;
+  clock = revisionClock(device, snapshot);
+  Object.assign(state, materialize(snapshot));
+  localStorage.setItem(activeKey, JSON.stringify(snapshot));
+  // Do not erase an in-progress homework form while a background sync finishes.
+  if (!document.activeElement?.closest('form')) render();
+}
+async function runSync() {
+  if (syncing || !account) return;
+  if (!navigator.onLine) { syncNotice = 'Offline. Changes are saved on this device and will sync when connected.'; showSyncStatus(); return; }
+  syncing = true; syncError = false; syncNotice = 'Syncing…'; showSyncStatus();
+  const uid = account.uid;
+  try {
+    do {
+      const sent = activeSnapshot;
+      const merged = await syncAccount(uid, sent);
+      if (uid !== account?.uid) return;
+      const latest = mergeSnapshots(activeSnapshot, merged);
+      applySnapshot(latest);
+      if (localStorage.getItem(guestKey)) {
+        localStorage.removeItem(guestKey);
+        localStorage.removeItem(key);
+      }
+      if (JSON.stringify(latest) === JSON.stringify(merged)) break;
+    } while (account?.uid === uid);
+    syncNotice = 'Synced with Google · ' + new Date().toLocaleTimeString('en-HK', {hour:'numeric', minute:'2-digit'});
+  } catch (error) { syncError = true; syncNotice = `${error.message} Changes are saved on this device.`; }
+  finally { syncing = false; showSyncStatus(); }
+}
+async function activateAccount(user) {
+  if (!user?.uid) return;
+  account = user;
+  activeKey = `${key}:user:${user.uid}`;
+  const cached = read(activeKey) || emptySnapshot();
+  applySnapshot(mergeSnapshots(cached, read(guestKey) || emptySnapshot()));
+  await runSync();
+}
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const readable = date => new Intl.DateTimeFormat('en-HK', {weekday:'long', day:'numeric', month:'long', year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const short = date => new Intl.DateTimeFormat('en-HK', {day:'numeric', month:'short',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
@@ -85,8 +150,8 @@ function homeworkPreview() {
 function render() {
   const info = dayInfo(state.date, state.overrides);
   const open = state.homework.filter(item => !item.done).length;
-  app.innerHTML = `<header class="topbar"><div class="brand"><span class="brand-icon">A–F</span><span>timing<small>YOUR SCHOOL DAY, IN SYNC</small></span></div><nav aria-label="Main"><button data-view="today" class="${state.view === 'today' ? 'active' : ''}">Schedule</button><button data-view="homework" class="${state.view === 'homework' ? 'active' : ''}">Homework${open ? ` (${open})` : ''}</button></nav></header>
-    <main><section class="hero ${state.view === 'homework' ? 'compact' : ''}"><div><span class="eyebrow">2026—2027 · CLASS 6B</span><h1>${state.view === 'homework' ? 'Homework,<br><i>right on time.</i>' : 'Your days,<br><i>in their own rhythm.</i>'}</h1><p>${state.view === 'homework' ? 'Assignments follow your next real lesson.' : 'A timetable that follows the school calendar, even when the cycle changes.'}</p></div><div class="hero-badge"><span>${state.view === 'homework' ? open : info.cycle || '—'}</span><small>${state.view === 'homework' ? 'OPEN TASKS' : info.cycle ? 'CYCLE DAY' : 'NO CYCLE DAY'}</small></div></section>
+  app.innerHTML = `<header class="topbar"><div class="brand"><span class="brand-icon">A–F</span><span>timing<small>YOUR SCHOOL DAY, IN SYNC</small></span></div><div class="topbar-actions"><nav aria-label="Main"><button data-view="today" class="${state.view === 'today' ? 'active' : ''}">Schedule</button><button data-view="homework" class="${state.view === 'homework' ? 'active' : ''}">Homework${open ? ` (${open})` : ''}</button></nav><button id="account-action" class="account-button" ${syncBusy ? 'disabled' : ''}>${account ? `${escapeHTML(account.displayName || account.email || 'Google account')} ▾` : 'Sign in with Google'}</button></div></header>
+    <main><section class="hero ${state.view === 'homework' ? 'compact' : ''}"><div><span class="eyebrow">2026—2027 · CLASS 6B</span><h1>${state.view === 'homework' ? 'Homework,<br><i>right on time.</i>' : 'Your days,<br><i>in their own rhythm.</i>'}</h1><p>${state.view === 'homework' ? 'Assignments follow your next real lesson.' : 'A timetable that follows the school calendar, even when the cycle changes.'}</p></div><div class="hero-badge"><span>${state.view === 'homework' ? open : info.cycle || '—'}</span><small>${state.view === 'homework' ? 'OPEN TASKS' : info.cycle ? 'CYCLE DAY' : 'NO CYCLE DAY'}</small></div></section><section class="sync-panel ${syncError ? 'error' : ''}" role="status"><p>${escapeHTML(syncNotice)}</p>${account ? '<button id="sync-now">Sync now</button><button id="sign-out">Sign out</button>' : ''}</section>
     <div class="layout"><div class="primary-column">${state.view === 'homework' ? homework() : `<section class="card day-card"><div class="section-heading"><div><span class="eyebrow">SELECTED DAY</span><h2>${readable(state.date)}</h2></div><input id="date-picker" aria-label="Choose date" type="date" value="${state.date}"></div><div class="notice ${info.type}"><span class="notice-dot"></span><span>${escapeHTML(info.label)}</span>${info.cycle ? `<b>Day ${info.cycle}</b>` : ''}</div><div class="subheading"><h3>Lessons</h3><label class="mode">Times <select id="time-mode"><option value="summer" ${state.timeMode === 'summer' ? 'selected' : ''}>Summer</option><option value="winter" ${state.timeMode === 'winter' ? 'selected' : ''}>Winter</option></select></label></div>${lessonList(state.date)}</section>${homeworkPreview()}`}</div>
     <aside><section class="card calendar-card">${calendar()}<div class="legend"><span><i class="legend-regular"></i>Lessons</span><span><i class="legend-special"></i>Special / exams</span><span><i class="legend-off"></i>Off</span></div></section><section class="card adjust-card"><span class="eyebrow">SCHOOL CHANGES</span><h2>Adjust this date</h2><p>Mark a cancellation or an updated timetable. Homework deadlines recalculate immediately.</p><label>Status<select id="day-type"><option value="default">Use school calendar</option><option value="regular" ${state.overrides[state.date]?.type === 'regular' ? 'selected' : ''}>Normal lessons</option><option value="special" ${state.overrides[state.date]?.type === 'special' ? 'selected' : ''}>Special timetable (unconfirmed)</option><option value="holiday" ${state.overrides[state.date]?.type === 'holiday' ? 'selected' : ''}>No school / cancelled</option></select></label><label>Cycle letter<select id="cycle-type"><option value="default">Use printed letter</option>${'ABCDEF'.split('').map(letter => `<option value="${letter}" ${state.overrides[state.date]?.cycle === letter ? 'selected' : ''}>${letter}</option>`).join('')}</select></label><p class="footnote">The school’s published A–F letter takes priority unless you choose an override. S6 lessons always stop after 1 February.</p></section><section class="export"><button id="export-ics">↓ Export calendar (.ics)</button><small>Import into Apple or Google Calendar. Export again after changes; this file does not live sync.</small></section></aside></div></main><footer>Built around your 6B timetable · Local data stays on this device</footer>`;
 }
@@ -94,6 +159,10 @@ function render() {
 app.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button) return;
+  if (button.id === 'account-action' && !account) { void signIn(); return; }
+  if (button.id === 'account-action' && account) { app.querySelector('#sign-out')?.focus(); return; }
+  if (button.id === 'sync-now') { void runSync(); return; }
+  if (button.id === 'sign-out') { void signOut(); return; }
   // A form's submit click must reach its submit event before the DOM is rebuilt.
   if (button.type === 'submit' && button.closest('form')) return;
   if (button.dataset.date) state.date = button.dataset.date;
@@ -131,6 +200,26 @@ app.addEventListener('click', event => {
   persist(); render();
   if (button.dataset.newSubject || button.dataset.edit) app.querySelector('#homework-form')?.scrollIntoView({behavior:'smooth', block:'start'});
 });
+async function signIn() {
+  if (syncBusy) return;
+  syncBusy = true; syncError = false; render();
+  try {
+    const user = await googleSignIn();
+    if (!user) throw new Error('Google sign-in did not return an account.');
+    await activateAccount(user);
+  } catch (error) { syncError = true; syncNotice = error.message; }
+  finally { syncBusy = false; render(); }
+}
+async function signOut() {
+  try {
+    await googleSignOut();
+    account = null;
+    activeKey = guestKey;
+    applySnapshot(read(guestKey) || emptySnapshot());
+    syncError = false; syncNotice = 'Signed out. New changes will stay on this device.';
+  } catch (error) { syncError = true; syncNotice = error.message; }
+  render();
+}
 app.addEventListener('change', event => {
   if (event.target.id === 'homework-filter') { state.filter = event.target.value; render(); return; }
   if (event.target.id === 'homework-subject-filter') { state.subjectFilter = event.target.value; render(); return; }
@@ -196,4 +285,12 @@ app.addEventListener('submit', event => {
   }
 });
 render();
+if (cloudConfigured) {
+  void currentAccount().then(user => user && activateAccount(user)).catch(error => {
+    syncError = true; syncNotice = `${error.message} Local data is available.`; render();
+  });
+  window.addEventListener('online', () => { if (account) void runSync(); });
+  window.addEventListener('focus', () => { if (account) void runSync(); });
+  setInterval(() => { if (account && document.visibilityState === 'visible') void runSync(); }, 30_000);
+}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});

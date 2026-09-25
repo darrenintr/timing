@@ -1,5 +1,6 @@
 {
   "appId": "io.github.darrenintr.timing",
   "appName": "Timing",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {"FirebaseAuthentication": {"providers": ["google.com"]}}
 }

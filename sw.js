@@ -1,6 +1,6 @@
-const CACHE = 'timing-v2';
+const CACHE = 'timing-v3';
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './src/main.js', './src/schedule.js', './src/homework.js', './src/calendar-export.js', './src/style.css'])));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './src/main.js', './src/style.css'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', event => {

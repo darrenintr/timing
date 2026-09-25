@@ -21,11 +21,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run package:web
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - run: npx cap add android
-      - run: npx cap sync android
+      - run: python3 scripts/configure-native.py android
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+          TIMING_FIREBASE_ANDROID_JSON_BASE64: ${{ secrets.TIMING_FIREBASE_ANDROID_JSON_BASE64 }}
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
         working-directory: android
@@ -43,10 +48,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run package:web
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - run: npx cap add ios
-      - run: npx cap sync ios
+      - run: python3 scripts/configure-native.py ios
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
+          TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
+      - run: pod install
+        working-directory: ios/App
       - name: Compile without signing
         run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build
       - name: Package unsigned IPA
@@ -69,9 +81,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run package:windows
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - uses: actions/upload-artifact@v4
         with:
           name: Timing-Windows-EXE
@@ -86,9 +100,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run package:linux
+        env:
+          TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - uses: actions/upload-artifact@v4
         with:
           name: Timing-Ubuntu-DEB
