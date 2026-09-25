@@ -33,6 +33,7 @@ for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
         '    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>\n</adaptive-icon>'))
 
 ns = '{http://schemas.android.com/apk/res/android}'
+ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
 manifest = app / 'AndroidManifest.xml'
 tree = ET.parse(manifest)
 application = tree.getroot().find('application')
