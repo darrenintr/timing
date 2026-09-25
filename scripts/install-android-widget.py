@@ -7,16 +7,13 @@ app = Path('android/app/src/main')
 source = Path('native/android')
 java = app / 'java/io/github/darrenintr/timing'
 java.mkdir(parents=True, exist_ok=True)
-for name in ('MainActivity.java', 'TimingWidgetPlugin.java', 'TimingWidgetProvider.java'):
-    copy2(source / name, java / name)
-for folder, name, original in (
-    ('xml', 'timing_widget.xml', 'timing_widget.xml'),
-    ('layout', 'timing_widget.xml', 'timing_widget.xml.layout'),
-    ('drawable', 'timing_widget_background.xml', 'timing_widget_background.xml'),
-):
-    destination = app / 'res' / folder
+for code in source.glob('*.java'):
+    copy2(code, java / code.name)
+# Layouts, drawables, colours (with night variants), styles and provider info.
+for resource in (source / 'res').rglob('*.xml'):
+    destination = app / 'res' / resource.parent.name
     destination.mkdir(parents=True, exist_ok=True)
-    copy2(source / original, destination / name)
+    copy2(resource, destination / resource.name)
 
 for icons in (source / 'icons').glob('mipmap-*'):
     destination = app / 'res' / icons.name
@@ -37,22 +34,27 @@ ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
 manifest = app / 'AndroidManifest.xml'
 tree = ET.parse(manifest)
 application = tree.getroot().find('application')
-receiver = ET.SubElement(application, 'receiver', {
-    ns + 'name': '.TimingWidgetProvider', ns + 'exported': 'true',
-    ns + 'label': 'Timing timetable & homework'
-})
-filter_ = ET.SubElement(receiver, 'intent-filter')
-for action in ('android.appwidget.action.APPWIDGET_UPDATE', 'android.intent.action.DATE_CHANGED',
-               'android.intent.action.TIME_SET', 'android.intent.action.TIMEZONE_CHANGED'):
-    ET.SubElement(filter_, 'action', {ns + 'name': action})
-ET.SubElement(receiver, 'meta-data', {
-    ns + 'name': 'android.appwidget.provider', ns + 'resource': '@xml/timing_widget'
-})
+# The Day widget keeps the original receiver name so placed widgets survive updates.
+widgets = (
+    ('.TimingWidgetProvider', 'Timing · Today', 'timing_widget'),
+    ('.TimingWidgetProvider$Now', 'Timing · Now', 'timing_widget_now'),
+    ('.TimingWidgetProvider$Due', 'Timing · Homework count', 'timing_widget_due'),
+    ('.TimingWidgetProvider$Next', 'Timing · Next lesson', 'timing_widget_next'),
+    ('.TimingWidgetProvider$Timeline', 'Timing · Timeline', 'timing_widget_timeline'),
+    ('.TimingWidgetProvider$Homework', 'Timing · Homework', 'timing_widget_homework'),
+    ('.TimingWidgetProvider$NextDay', 'Timing · Next school day', 'timing_widget_next_day'),
+)
+for name, label, info in widgets:
+    receiver = ET.SubElement(application, 'receiver', {
+        ns + 'name': name, ns + 'exported': 'true', ns + 'label': label
+    })
+    filter_ = ET.SubElement(receiver, 'intent-filter')
+    for action in ('android.appwidget.action.APPWIDGET_UPDATE', 'android.intent.action.DATE_CHANGED',
+                   'android.intent.action.TIME_SET', 'android.intent.action.TIMEZONE_CHANGED'):
+        ET.SubElement(filter_, 'action', {ns + 'name': action})
+    ET.SubElement(receiver, 'meta-data', {
+        ns + 'name': 'android.appwidget.provider', ns + 'resource': '@xml/' + info
+    })
 tree.write(manifest, encoding='utf-8', xml_declaration=True)
 
-strings = app / 'res/values/strings.xml'
-content = strings.read_text()
-assert '</resources>' in content
-strings.write_text(content.replace('</resources>',
-    '    <string name="timing_widget_description">Today’s timetable and upcoming homework</string>\n</resources>'))
-print('Android widget receiver, data bridge, and Timing launcher icons installed')
+print('Android widgets (Today, Now, Homework count, Next lesson, Timeline, Homework, Next school day), data bridge, and Timing launcher icons installed')

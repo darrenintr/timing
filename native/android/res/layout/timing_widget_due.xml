@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Due · 2×1: homework count in the burst, overdue flagged. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical"
+    android:background="@drawable/timing_bg_surface" android:paddingStart="12dp" android:paddingEnd="14dp">
+    <ImageView android:id="@+id/timing_badge" android:layout_width="58dp" android:layout_height="58dp"
+        android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:layout_marginStart="12dp" android:orientation="vertical">
+        <TextView android:id="@+id/timing_title" style="@style/TimingBody" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:text="Homework" />
+        <TextView android:id="@+id/timing_detail" style="@style/TimingBody" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp"
+            android:textStyle="bold" android:textColor="@color/timing_danger" android:text="1 overdue" />
+    </LinearLayout>
+</LinearLayout>

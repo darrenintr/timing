@@ -26,7 +26,8 @@ app_group = project.main_group['App'] || abort('App group not found')
 end
 widget_group = project.main_group.new_group('TimingWidget', 'TimingWidget')
 widget_ref = widget_group.new_file('TimingWidget.swift')
-widget = project.new_target(:app_extension, 'TimingWidget', :ios, '14.0')
+# Interactive widgets (App Intent check buttons) need iOS 17; the app itself keeps Capacitor's minimum.
+widget = project.new_target(:app_extension, 'TimingWidget', :ios, '17.0')
 widget.source_build_phase.add_file_reference(widget_ref)
 
 app.build_configurations.each do |configuration|
@@ -39,7 +40,7 @@ widget.build_configurations.each do |configuration|
     'CURRENT_PROJECT_VERSION' => '1',
     'MARKETING_VERSION' => '1.0',
     'SWIFT_VERSION' => '5.0',
-    'IPHONEOS_DEPLOYMENT_TARGET' => '14.0',
+    'IPHONEOS_DEPLOYMENT_TARGET' => '17.0',
     'TARGETED_DEVICE_FAMILY' => '1,2',
     'INFOPLIST_FILE' => 'TimingWidget/Info.plist',
     'CODE_SIGN_ENTITLEMENTS' => 'TimingWidget/Timing.entitlements',
@@ -55,9 +56,17 @@ embed.add_file_reference(widget.product_reference)
 app.add_dependency(widget)
 project.save
 
+# Widget taps open timing://today, timing://homework/<id> and timing://homework/new.
+info_path = "#{app_folder}/Info.plist"
+info = Xcodeproj::Plist.read_from_path(info_path)
+info['CFBundleURLTypes'] = (info['CFBundleURLTypes'] || []) + [{
+  'CFBundleURLName' => 'io.github.darrenintr.timing', 'CFBundleURLSchemes' => ['timing']
+}]
+Xcodeproj::Plist.write_to_path(info, info_path)
+
 storyboard = "#{app_folder}/Base.lproj/Main.storyboard"
 content = File.read(storyboard)
 old = 'customClass="CAPBridgeViewController" customModule="Capacitor"'
 abort 'Capacitor bridge controller not found' unless content.include?(old)
 File.write(storyboard, content.sub(old, 'customClass="TimingViewController" customModule="App"'))
-puts 'iOS WidgetKit target, shared App Group, bridge, and Timing icon installed'
+puts 'iOS WidgetKit widgets, timing:// links, shared App Group, bridge, and Timing icon installed'

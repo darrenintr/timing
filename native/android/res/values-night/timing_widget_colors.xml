@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark uses the app's tokens; no shadows, the wallpaper does the separating. -->
+<resources>
+    <color name="timing_surface">#202423</color>
+    <color name="timing_paper">#161918</color>
+    <color name="timing_ink">#E8EBE9</color>
+    <color name="timing_ink2">#B3B9B6</color>
+    <color name="timing_ink3">#9AA29F</color>
+    <color name="timing_faint">#7B8380</color>
+    <color name="timing_line">#2A2E2C</color>
+    <color name="timing_accent">#7FD4C9</color>
+    <color name="timing_accent_deep">#4FA89D</color>
+    <color name="timing_accent_wash">#16302D</color>
+    <color name="timing_on_accent">#0D2B28</color>
+    <color name="timing_on_accent_now">#0D2B28</color>
+    <color name="timing_on_wash">#E8EBE9</color>
+    <color name="timing_on_wash2">#B3B9B6</color>
+    <color name="timing_warm">#F0A07E</color>
+    <color name="timing_warm_deep">#F0A07E</color>
+    <color name="timing_warm_wash">#3A221A</color>
+    <color name="timing_danger">#FFB4AB</color>
+</resources>

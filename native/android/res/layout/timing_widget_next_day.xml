@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Next school day · 3×2: skips weekends and holidays. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:background="@drawable/timing_bg_wash" android:paddingStart="20dp" android:paddingEnd="20dp"
+    android:paddingTop="16dp" android:paddingBottom="16dp">
+    <TextView android:id="@+id/timing_eyebrow" style="@style/TimingEyebrow" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:textColor="@color/timing_accent" android:text="Next school day" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+        android:gravity="bottom">
+        <TextView android:id="@+id/timing_title" style="@style/TimingSerif" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textSize="34sp" android:textColor="@color/timing_on_wash" android:text="Monday" />
+        <TextView android:id="@+id/timing_corner" style="@style/TimingSerif" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_marginStart="12dp" android:textSize="22sp"
+            android:textStyle="bold|italic" android:textColor="@color/timing_accent" android:text="Day E" />
+    </LinearLayout>
+    <TextView android:id="@+id/timing_detail" style="@style/TimingBody" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textSize="12sp"
+        android:textColor="@color/timing_on_wash2" android:text="28 September · 8 lessons" />
+    <FrameLayout android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+    <LinearLayout android:id="@+id/timing_rows" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:background="@drawable/timing_bg_pill" android:paddingStart="12dp"
+        android:paddingEnd="12dp" android:paddingTop="8dp" android:paddingBottom="8dp">
+        <TextView android:id="@+id/timing_row_time" style="@style/TimingMono" android:layout_width="44dp"
+            android:layout_height="wrap_content" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/timing_accent" android:text="08:15" />
+        <TextView android:id="@+id/timing_row_subject" style="@style/TimingBody" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="14sp"
+            android:fontFamily="sans-serif-medium" android:text="Economics" />
+        <TextView android:id="@+id/timing_row_place" style="@style/TimingMono" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="10sp"
+            android:textColor="@color/timing_ink2" android:text="413 · NPY" />
+    </LinearLayout>
+    <TextView android:id="@+id/timing_foot" style="@style/TimingBody" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="12sp"
+        android:textColor="@color/timing_on_wash2" android:visibility="gone" />
+</LinearLayout>

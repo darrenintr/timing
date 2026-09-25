@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:gravity="center_vertical" android:paddingTop="2dp" android:paddingBottom="2dp" android:paddingStart="10dp" android:paddingEnd="10dp">
+    <TextView android:id="@+id/timing_row_time" style="@style/TimingMono" android:layout_width="42dp"
+        android:layout_height="wrap_content" android:textColor="@color/timing_ink2" />
+    <TextView android:id="@+id/timing_row_subject" style="@style/TimingBody" android:layout_width="0dp"
+        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+        android:textSize="13sp" android:textColor="@color/timing_ink" android:fontFamily="sans-serif-medium" />
+    <TextView android:id="@+id/timing_row_place" style="@style/TimingMono" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="10sp" />
+</LinearLayout>

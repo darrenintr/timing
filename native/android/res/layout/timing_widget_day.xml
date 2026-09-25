@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Day · 4×3 and 4×4: the whole day; at 4×4 homework joins with 44 dp check targets. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:background="@drawable/timing_bg_surface" android:paddingStart="16dp" android:paddingEnd="16dp"
+    android:paddingTop="16dp" android:paddingBottom="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <ImageView android:id="@+id/timing_badge" android:layout_width="52dp" android:layout_height="52dp"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="12dp" android:orientation="vertical">
+            <TextView android:id="@+id/timing_title" style="@style/TimingSerif" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:textSize="28sp" android:text="Friday" />
+            <TextView android:id="@+id/timing_detail" style="@style/TimingBody" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="3dp" android:textSize="12sp"
+                android:textColor="@color/timing_ink2" android:text="25 Sep · 8 lessons · until 13:25" />
+        </LinearLayout>
+        <FrameLayout android:id="@+id/timing_add" android:layout_width="44dp" android:layout_height="44dp"
+            android:background="@drawable/timing_bg_button" android:contentDescription="Add homework">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                android:src="@drawable/timing_ic_add" android:importantForAccessibility="no" />
+        </FrameLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/timing_foot" style="@style/TimingBody" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="10dp" android:paddingStart="12dp"
+        android:maxLines="2" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/timing_warm" android:visibility="gone" />
+    <LinearLayout android:id="@+id/timing_rows" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" android:orientation="vertical" />
+    <FrameLayout android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+    <LinearLayout android:id="@+id/timing_tasks" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:background="@drawable/timing_bg_panel" android:paddingStart="4dp"
+        android:paddingEnd="6dp" android:paddingTop="4dp" android:paddingBottom="4dp" />
+</LinearLayout>

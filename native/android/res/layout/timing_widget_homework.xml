@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Homework · 4×3: grouped by overdue, today and upcoming. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/timing_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:background="@drawable/timing_bg_surface" android:paddingStart="20dp" android:paddingEnd="16dp"
+    android:paddingTop="16dp" android:paddingBottom="14dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <TextView android:id="@+id/timing_title" style="@style/TimingSerif" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textSize="26sp" android:text="Homework" />
+        <TextView android:id="@+id/timing_detail" style="@style/TimingMono" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp"
+            android:textSize="12sp" android:textColor="@color/timing_ink2" android:text="3 open" />
+        <LinearLayout android:id="@+id/timing_add" android:layout_width="wrap_content" android:layout_height="44dp"
+            android:gravity="center_vertical" android:background="@drawable/timing_bg_button"
+            android:paddingStart="14dp" android:paddingEnd="18dp" android:contentDescription="Add homework">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/timing_ic_add"
+                android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textColor="@color/timing_on_accent" android:text="Add" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/timing_tasks" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:layout_marginTop="12dp" android:orientation="vertical"
+        android:background="@drawable/timing_bg_panel" android:paddingStart="4dp" android:paddingEnd="16dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp" />
+</LinearLayout>

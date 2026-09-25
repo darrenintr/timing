@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timing_widget_description">Now, the rest of the day and homework you can tick off</string>
+    <string name="timing_widget_now_description">The cycle day, the lesson happening now and its progress</string>
+    <string name="timing_widget_due_description">Open homework, with overdue work flagged</string>
+    <string name="timing_widget_next_description">The next lesson and its room</string>
+    <string name="timing_widget_timeline_description">The day left to right, filling in as lessons run</string>
+    <string name="timing_widget_homework_description">Homework checklist grouped by when it is due</string>
+    <string name="timing_widget_next_day_description">The next school day\'s letter and first lesson</string>
+</resources>

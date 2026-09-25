@@ -19,7 +19,26 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 
 The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK. Run `python3 scripts/configure-native.py android` and `python3 scripts/install-android-widget.py` for Android; run `python3 scripts/configure-native.py ios` and `ruby scripts/install-ios-widget.rb` for iOS. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing and system notifications still need separate setup.
 
-Android and iOS packages include a **Timing timetable & homework** home-screen widget and the Timing launcher icon. Launch the app once after installing it, then add the widget from your device's widget picker. It shows the Hong Kong day's printed A–F timetable and the next open homework items, including deadlines recalculated after day overrides. Edits and account changes refresh it immediately; the iOS WidgetKit timeline and Android daily updates advance the date while the app is closed. The iOS widget uses the `group.io.github.darrenintr.timing` App Group in both the app and extension: device signing must provision this group for both bundle IDs (`io.github.darrenintr.timing` and `io.github.darrenintr.timing.widget`). The CI IPA remains unsigned and needs both targets signed together for installation.
+### Widgets
+
+Android and iOS packages include a family of home-screen widgets and the Timing launcher icon, following the widget design (Today view reduced to a glance: hairlines instead of cards, the three type voices, colour only where it means something). Launch the app once after installing it, then add widgets from your device's widget picker.
+
+| Platform | Widget | Size | Shows |
+| --- | --- | --- | --- |
+| iPhone · iPad | Now | small | Cycle day, current lesson, minutes left, progress, what's next |
+| iPhone · iPad | Due next | small | Open homework count, next three with overdue / today first |
+| iPhone · iPad | Today | medium · large · extra large (iPad) | Now plus the next lessons; the whole day with homework you can tick off; iPad adds a three-column day overview |
+| iPhone | Lock Screen | circular · rectangular · inline | Cycle letter with lesson progress, homework count, current lesson and next room |
+| Android | Now | 2×2 | Cycle letter in the Expressive cookie, current lesson, wavy progress |
+| Android | Homework count · Next lesson | 2×1 | Open homework in the burst with overdue flagged; the next lesson and room |
+| Android | Today | 4×2 → 4×4 | Next four lessons; at 4×3 the whole day; at 4×4 homework with 44 dp check targets |
+| Android | Timeline · Homework · Next school day | 6×2 · 4×3 · 3×2 | The day left to right, filling as lessons run; homework grouped by due; the next school day's letter and first lesson |
+
+Every widget reads the same snapshot (`src/widget-data.js`) in Hong Kong time: the printed cycle letter, lesson times, rooms and teachers, day notices and open homework with its recalculated due lesson. They redraw at each period boundary (and each minute during school hours) and at midnight, so they stay correct while the app is closed. Tests, events and holidays show the school's notice instead of lessons, never a guessed timetable; after 1 February they say S6 has finished. Both light and dark follow the system.
+
+Tapping a widget opens Today; a homework row opens that assignment and **Add** opens the homework form (via `timing://` links). The check circle completes homework in place (an App Intent on iOS 17+, a broadcast on Android); the app collects those check-offs next time it opens and syncs them. iOS widgets need iOS 17 or later; the app itself keeps Capacitor's minimum. The widgets use the system serif and monospace faces as stand-ins for Fraunces and JetBrains Mono, because widget processes cannot load the bundled web fonts.
+
+The iOS widgets use the `group.io.github.darrenintr.timing` App Group in both the app and extension: device signing must provision this group for both bundle IDs (`io.github.darrenintr.timing` and `io.github.darrenintr.timing.widget`). The CI IPA remains unsigned and needs both targets signed together for installation.
 
 ## Google account sync setup
 
