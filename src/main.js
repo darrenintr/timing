@@ -54,11 +54,16 @@ const read = name => {
 const saved = read(key) || {};
 const guestKey = `${key}:guest`;
 const deviceKey = `${key}:device`;
+const accountKey = `${key}:account`;
+const userKey = uid => `${key}:user:${uid}`;
 const device = storage.getItem(deviceKey) || crypto.randomUUID();
 storage.setItem(deviceKey, device);
-let activeKey = guestKey;
-let activeSnapshot = read(guestKey) || fromLegacy(saved, device);
-storage.setItem(guestKey, JSON.stringify(activeSnapshot));
+// A signed-in device opens on that account's offline copy, not an empty guest copy,
+// so the first render, the widget snapshot and widget check-offs use the right data.
+const rememberedUid = cloudConfigured ? storage.getItem(accountKey) : null;
+let activeKey = rememberedUid ? userKey(rememberedUid) : guestKey;
+let activeSnapshot = rememberedUid ? read(activeKey) || emptySnapshot() : read(guestKey) || fromLegacy(saved, device);
+storage.setItem(activeKey, JSON.stringify(activeSnapshot));
 let account = null, syncBusy = false, syncNotice = cloudConfigured ? 'Saved on this device. Sign in to sync.' : 'Google sync needs a Firebase project configuration. Your data stays on this device.';
 let syncError = false, syncing = false, revision = revisionClock(device, activeSnapshot);
 let backupNotice = '', updateReady = false;
@@ -70,7 +75,7 @@ const state = {
   timeMode: local.timeMode,
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set()
+  composing: false, expanded: new Set(), draft: null
 };
 let followToday = true;
 const app = document.querySelector('#app');
@@ -128,7 +133,8 @@ async function runSync() {
 async function activateAccount(user) {
   if (!user?.uid) return;
   account = user;
-  activeKey = `${key}:user:${user.uid}`;
+  activeKey = userKey(user.uid);
+  storage.setItem(accountKey, user.uid);
   const cached = read(activeKey) || emptySnapshot();
   applySnapshot(mergeSnapshots(cached, read(guestKey) || emptySnapshot()));
   await runSync();
@@ -299,7 +305,9 @@ function groupedHomework(items) {
 
 function homeworkView() {
   const editing = state.homework.find(item => item.id === state.editingId);
-  const draft = editing ?? {subject: state.prefillSubject ?? 'ECON', afterDate: state.date > LAST_S6_DAY ? LAST_S6_DAY : state.date, dueMode:'nextLesson', dueDate:'', reminderDays:1, title:'', notes:''};
+  const base = editing ?? {subject: state.prefillSubject ?? 'ECON', afterDate: state.date > LAST_S6_DAY ? LAST_S6_DAY : state.date, dueMode:'nextLesson', dueDate:'', reminderDays:1, title:'', notes:''};
+  // What was typed survives a background sync or clock redraw.
+  const draft = state.draft?.editingId === state.editingId ? {...base, ...state.draft.values} : base;
   const preview = resolveHomework(draft, state.overrides);
   const items = visibleHomework(state.homework, state.overrides, state.filter, state.subjectFilter);
   const open = state.homework.filter(item => !item.done).length;
@@ -384,7 +392,17 @@ function settingsView() {
 
 /* ---------- Shell ---------- */
 
+// The whole view is redrawn, so find the focused control again by its identifying attributes.
+function focusSelector(element) {
+  if (!element || !app.contains?.(element) || !globalThis.CSS?.escape) return null;
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  const attributes = [...element.attributes].filter(({name}) => name.startsWith('data-') || name === 'name' ||
+    (name === 'value' && element.type === 'radio'));
+  if (!attributes.length) return null;
+  return element.tagName.toLowerCase() + attributes.map(({name, value}) => `[${name}="${CSS.escape(value)}"]`).join('');
+}
 function render() {
+  const focused = focusSelector(globalThis.document?.activeElement);
   const open = state.homework.filter(item => !item.done).length;
   const tab = (view, text) => `<button class="tab ${state.view === view ? 'active' : ''}" data-view="${view}" ${state.view === view ? 'aria-current="page"' : ''}>${text}${view === 'homework' && open ? `<sup>${open}</sup>` : ''}</button>`;
   const body = {today: todayView, calendar: calendarView, homework: homeworkView, settings: settingsView}[state.view]();
@@ -399,6 +417,7 @@ function render() {
   ${updateReady ? '<p class="update-indicator" role="status">An update is ready. <button class="link" data-update>Reload app</button></p>' : ''}
   <main>${body}</main>
 </div>`;
+  if (focused) app.querySelector(focused)?.focus({preventScroll:true});
 }
 
 app.addEventListener('click', event => {
@@ -412,6 +431,7 @@ app.addEventListener('click', event => {
   if (button.dataset.shift) state.date = addDays(state.date, Number(button.dataset.shift));
   if (button.dataset.today !== undefined) state.date = today();
   const compose = button.dataset.compose !== undefined;
+  if (compose || button.dataset.newSubject || button.dataset.edit || button.dataset.cancelEdit !== undefined) state.draft = null;
   if (compose) { state.view = 'homework'; state.editingId = null; state.prefillSubject = null; state.composing = true; }
   if (button.dataset.newSubject) {
     state.prefillSubject = button.dataset.newSubject;
@@ -486,12 +506,16 @@ async function signIn() {
   } catch (error) { syncError = true; syncNotice = error.message; }
   finally { syncBusy = false; render(); }
 }
+function useGuestData() {
+  account = null;
+  storage.removeItem(accountKey);
+  activeKey = guestKey;
+  applySnapshot(read(guestKey) || emptySnapshot());
+}
 async function signOut() {
   try {
     await googleSignOut();
-    account = null;
-    activeKey = guestKey;
-    applySnapshot(read(guestKey) || emptySnapshot());
+    useGuestData();
     syncError = false; syncNotice = 'Signed out. New changes will stay on this device.';
   } catch (error) { syncError = true; syncNotice = error.message; }
   render();
@@ -518,7 +542,8 @@ app.addEventListener('change', event => {
   const control = event.target.id || event.target.name;
   if (control === 'homework-filter') { state.filter = event.target.value; render(); return; }
   if (control === 'homework-subject-filter') { state.subjectFilter = event.target.value; render(); return; }
-  if (event.target.closest('#homework-form')) { updateDraftPreview(); return; }
+  const homeworkForm = event.target.closest('#homework-form');
+  if (homeworkForm) { saveDraft(homeworkForm); updateDraftPreview(); return; }
   // Only settings controls re-render; typing in a step field must not replace its form mid-submit.
   if (!['time-mode', 'day-type', 'cycle-type'].includes(control)) return;
   if (control === 'time-mode') state.timeMode = event.target.value;
@@ -536,8 +561,12 @@ app.addEventListener('change', event => {
   }
   persist(); render();
 });
+function saveDraft(form) {
+  state.draft = {editingId: state.editingId, values: Object.fromEntries(new FormData(form))};
+}
 app.addEventListener('input', event => {
-  if (event.target.closest('#homework-form')) updateDraftPreview();
+  const form = event.target.closest('#homework-form');
+  if (form) { saveDraft(form); updateDraftPreview(); }
 });
 function updateDraftPreview() {
   const form = app.querySelector('#homework-form');
@@ -575,6 +604,7 @@ app.addEventListener('submit', event => {
     state.editingId = null;
     state.prefillSubject = null;
     state.composing = false;
+    state.draft = null;
     persist(); render();
   } catch (error) {
     const message = app.querySelector('#form-error');
@@ -596,7 +626,7 @@ document.addEventListener?.('visibilitychange', () => {
 });
 onWidgetOpen(target => {
   state.view = target.view;
-  if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; }
+  if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; state.draft = null; }
   if (target.id) { state.filter = 'open'; state.subjectFilter = 'all'; state.expanded.add(target.id); }
   render();
   if (target.id) app.querySelector(`[data-id="${CSS.escape(target.id)}"]`)?.scrollIntoView({block:'center'});
@@ -614,14 +644,22 @@ clock?.unref?.();
 /* ---------- Sync ---------- */
 
 if (cloudConfigured) {
-  void currentAccount().then(user => user && activateAccount(user)).catch(error => {
+  void currentAccount().then(user => {
+    if (user) return activateAccount(user);
+    // The session ended elsewhere: its offline copy stays saved for the next sign-in.
+    if (rememberedUid) { useGuestData(); syncNotice = 'Signed out. Sign in again to sync.'; render(); }
+  }).catch(error => {
     syncError = true; syncNotice = `${error.message} Local data is available.`; render();
   });
   window.addEventListener('online', () => { if (account) void runSync(); });
   window.addEventListener('focus', () => { if (account) void runSync(); });
   setInterval(() => { if (account && document.visibilityState === 'visible') void runSync(); }, 30_000);
 }
-if (globalThis.navigator && 'serviceWorker' in navigator) {
+const hostedWeb = !nativeApp && /^https?:$/.test(globalThis.location?.protocol ?? '');
+if (globalThis.navigator && 'serviceWorker' in navigator && !hostedWeb) {
+  // Remove a worker registered by an earlier packaged version.
+  navigator.serviceWorker.getRegistrations().then(list => list.forEach(registration => registration.unregister())).catch(() => {});
+} else if (globalThis.navigator && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data?.type === 'TIMING_UPDATE_READY') {
       updateReady = true;
