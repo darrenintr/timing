@@ -10,7 +10,12 @@
 
 :root{
   color-scheme:light;
-  --paper:#faf9f6;--ink:#191c1b;--ink-2:#4a504e;--ink-3:#8a908e;--line:#e6e4df;--wash:#f1efea;
+  --paper:#f4f2ed;--ink:#191c1b;--ink-2:#434947;--ink-3:#6b7270;--line:#e3e0d9;--wash:#ece9e2;
+  --surface:#fffefb;--surface-2:#f8f6f2;--rim:rgba(255,255,255,.9);
+  --shadow-1:0 1px 2px rgba(40,36,28,.05),0 4px 14px -4px rgba(40,36,28,.08);
+  --shadow-2:0 2px 4px rgba(31,106,100,.06),0 12px 28px -10px rgba(31,106,100,.28);
+  --shadow-float:0 1px 2px rgba(40,36,28,.06),0 10px 30px -12px rgba(40,36,28,.22);
+  --glow:rgba(31,106,100,.10);
   --accent:#1f6a64;--accent-wash:#dcefeb;
   --warm:#b0532e;--warm-wash:#fbe9e1;
   --danger:#b3261e;
@@ -23,8 +28,13 @@
 }
 @media (prefers-color-scheme:dark){:root{
   color-scheme:dark;
-  --paper:#121413;--ink:#e8ebe9;--ink-2:#b3b9b6;--ink-3:#7b8380;--line:#2a2e2c;--wash:#1b1e1d;
-  --accent:#7fd4c9;--accent-wash:#16302d;
+  --paper:#0f1211;--ink:#eceeed;--ink-2:#bcc2bf;--ink-3:#939b98;--line:#2c3130;--wash:#232826;
+  --surface:#181c1b;--surface-2:#1f2422;--rim:rgba(255,255,255,.05);
+  --shadow-1:0 1px 2px rgba(0,0,0,.4),0 6px 18px -6px rgba(0,0,0,.5);
+  --shadow-2:0 2px 4px rgba(0,0,0,.35),0 14px 30px -10px rgba(0,0,0,.6);
+  --shadow-float:0 1px 2px rgba(0,0,0,.4),0 12px 32px -12px rgba(0,0,0,.7);
+  --glow:rgba(127,212,201,.08);
+  --accent:#7fd4c9;--accent-wash:#173532;
   --warm:#f0a07e;--warm-wash:#3a221a;
   --danger:#ffb4ab
 }}
@@ -60,8 +70,8 @@ main{padding-top:8px}
 /* ---------- Type primitives ---------- */
 .hero{padding:36px 0 8px}
 .hero-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
-.display{margin:0;font-family:var(--serif);font-weight:340;font-size:clamp(44px,11vw,68px);line-height:.95;letter-spacing:-.025em;font-variation-settings:'opsz' 144}
-.display .year{font-style:italic;font-weight:200;color:var(--ink-3)}
+.display{margin:0;font-family:var(--serif);font-weight:480;font-size:clamp(44px,11vw,68px);line-height:.95;letter-spacing:-.02em;font-variation-settings:'opsz' 48}
+.display .year{font-style:italic;font-weight:400;color:var(--ink-2)}
 .stepper{display:flex;gap:2px;padding-bottom:4px}
 .sub{margin:12px 0 0;font-size:15px;color:var(--ink-2)}
 .sub .count{font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink)}
@@ -75,7 +85,7 @@ main{padding-top:8px}
 .label{margin:0;font-family:var(--sans);font-size:11px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .label.overdue{color:var(--danger)}.label.today{color:var(--warm)}.label.unconfirmed{color:var(--ink-2)}
 .hint{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--ink-3)}
-.quiet-line{margin:6px 0 0;font-family:var(--serif);font-style:italic;font-weight:300;font-size:24px;color:var(--ink-2)}
+.quiet-line{margin:6px 0 0;font-family:var(--serif);font-style:italic;font-weight:420;font-size:24px;color:var(--ink-2)}
 .quiet-line.small{font-size:18px}
 .link{font-size:14px;font-weight:600;color:var(--accent);padding:4px 0}
 .link:hover{text-decoration:underline;text-underline-offset:3px}
@@ -164,7 +174,7 @@ em.overdue{color:var(--danger)}em.today{color:var(--warm)}em.unconfirmed{color:v
 .composer[open]>summary{display:none}
 .form{display:grid;gap:16px;padding:4px 0 8px}
 .title-input{width:100%;border:0;border-bottom:1.5px solid var(--line);background:transparent;padding:8px 0;font-family:var(--serif);font-size:26px;font-weight:400;letter-spacing:-.015em}
-.title-input::placeholder{color:var(--ink-3);font-style:italic;font-weight:300}
+.title-input::placeholder{color:var(--ink-3);font-style:italic;font-weight:420}
 .title-input:focus{outline:0;border-color:var(--accent)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .field{display:grid;gap:6px;min-width:0}
@@ -240,3 +250,84 @@ em.overdue{color:var(--danger)}em.today{color:var(--warm)}em.unconfirmed{color:v
 .sync-indicator.error{color:var(--danger)}
 .native-app .top{padding-top:calc(14px + max(24px, env(safe-area-inset-top, 0px)))}
 @media(display-mode:standalone){.top{padding-top:calc(14px + max(24px, env(safe-area-inset-top, 0px)))}}
+
+/* ---------- Layers ----------
+   Three depths: the paper (hero text sits right on it), cards that hold each
+   section, and lifted pieces inside a card (the lesson happening now, the
+   selected day, the active tab). The nav floats above everything. */
+html,body{background:
+  radial-gradient(120% 60% at 0% -10%,var(--glow),transparent 60%),
+  radial-gradient(90% 50% at 100% 0%,color-mix(in srgb,var(--warm) 7%,transparent),transparent 60%),
+  var(--paper);background-attachment:fixed}
+
+/* Floating nav */
+.top{margin:0 -8px;padding:calc(10px + env(safe-area-inset-top, 0px)) 8px 10px;background:transparent;backdrop-filter:none;border-bottom:0}
+.top::before{content:'';position:absolute;z-index:-1;inset:calc(6px + env(safe-area-inset-top, 0px)) 0 4px;border-radius:22px;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);
+  box-shadow:var(--shadow-float),inset 0 1px 0 var(--rim);border:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.native-app .top::before{top:calc(6px + max(24px, env(safe-area-inset-top, 0px)))}
+@media(display-mode:standalone){.top::before{top:calc(6px + max(24px, env(safe-area-inset-top, 0px)))}}
+.brand{padding-left:6px}
+.brand img{box-shadow:0 2px 6px -1px rgba(0,0,0,.25)}
+.tabs{padding:3px;border-radius:999px;background:var(--wash)}
+.tab{padding:7px 12px}
+.tab.active{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08),0 2px 8px -2px rgba(0,0,0,.12)}
+.icon-btn:hover,.icon-btn.active{background:var(--wash)}
+.sync-indicator{padding:0 4px}
+
+/* Section cards */
+.block{margin-top:16px;padding:20px 20px 10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--line) 75%,transparent);border-radius:24px;box-shadow:var(--shadow-1),inset 0 1px 0 var(--rim)}
+.block:has(>.quiet-line:only-child),.block:has(>.due-list){padding-bottom:16px}
+.block-head{margin-bottom:4px}
+.hero{padding-bottom:10px}
+.hero .icon-btn{background:var(--surface);box-shadow:var(--shadow-1);border:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.stepper{gap:8px}
+
+/* Lesson rows: the current lesson lifts out of the card */
+.lesson.now{position:relative;margin:6px -10px;padding:16px 10px 18px;border-bottom:0;border-radius:18px;
+  background:linear-gradient(160deg,var(--accent-wash),color-mix(in srgb,var(--accent-wash) 55%,var(--surface)));box-shadow:var(--shadow-2),inset 0 1px 0 var(--rim)}
+.lesson:has(+.lesson.now){border-bottom-color:transparent}
+.lesson.now .bar{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.lesson.now .add-inline{opacity:.8}
+.break{margin:4px -10px;padding:8px 10px 8px 86px;border-bottom:0;border-radius:12px;background:var(--surface-2)}
+.lesson:has(+.break){border-bottom-color:transparent}
+.lesson.past{opacity:.78}
+
+/* Homework */
+.due-row{margin:0 -10px;padding:12px 10px;width:calc(100% + 20px);border-radius:14px;transition:background .15s}
+.due-row:hover{background:var(--surface-2)}
+.dot.overdue{box-shadow:0 0 0 4px color-mix(in srgb,var(--danger) 18%,transparent)}
+.dot.today{box-shadow:0 0 0 4px color-mix(in srgb,var(--warm) 18%,transparent)}
+.dot.upcoming{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent)}
+.check{background:var(--surface-2)}
+.composer>summary.button{background:var(--ink);color:var(--paper);border-color:var(--ink);box-shadow:var(--shadow-1)}
+.composer>summary.button:hover{background:var(--ink);opacity:.9}
+.due-preview{border:1px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+.field select,.field input,.field textarea{background:var(--surface-2)}
+.toggle{box-shadow:inset 0 1px 2px rgba(0,0,0,.06)}
+.toggle input:checked+span{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.1),0 2px 6px -2px rgba(0,0,0,.14)}
+.button{background:var(--surface-2)}
+.button.primary{box-shadow:var(--shadow-1)}
+
+/* Calendar: school days are tiles, the chosen day floats */
+.month{gap:5px}
+.day{background:var(--surface-2)}
+.day.off,.day.holiday,.day.finished,.day.outside{background:transparent}
+.day:hover{background:var(--wash)}
+.day.is-today:not(.selected){box-shadow:inset 0 0 0 1.5px var(--accent)}
+.day.selected{background:var(--ink);box-shadow:0 8px 18px -8px rgba(0,0,0,.55);transform:translateY(-1px)}
+.picked{border-top:0;margin-top:16px;padding-bottom:20px}
+
+/* Settings */
+.setting{border-bottom:0;padding-bottom:20px}
+.setting:last-child{border-bottom:0}
+
+@media (max-width:480px){
+  .block{padding:18px 16px 8px;border-radius:22px}
+  .break{padding-left:72px}
+  .lesson.now{margin:6px -8px;padding-left:8px;padding-right:8px}
+}
+@media (prefers-reduced-transparency:reduce){.top::before{background:var(--surface);backdrop-filter:none}}
+.day.flag::after{top:6px;right:6px}
+#homework-section:not(:has(.composer[open])){padding:0;background:none;border:0;box-shadow:none}
+.plain-select{margin-left:auto}
