@@ -12,10 +12,10 @@ The [Build installable packages](.github/workflows/packages.yml) workflow runs o
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |
-| Android | `Timing-Android-APK` | Debug APK by default; release signed with a stable key when `ANDROID_KEYSTORE_*` secrets are configured. Its SHA-1 must match Firebase for Google sign-in. |
+| Android | `Timing-Android-APK` | Release signed with a stable key. CI stops if signing secrets are missing; its SHA-1 must match Firebase for Google sign-in. |
 | Windows | `Timing-Windows-EXE` | Portable x64 EXE; Windows may warn because it is not code-signed. |
 | Ubuntu | `Timing-Ubuntu-DEB` | x64 DEB package. |
-| iPhone/iPad | `Timing-iOS-unsigned-IPA` | Unsigned compilation artifact; **cannot be installed on a normal device** without Apple signing and provisioning. |
+| iPhone/iPad | `Timing-iOS-signed-IPA` | Ad hoc signed for devices registered in both the app and widget provisioning profiles. CI stops if signing credentials are missing. |
 
 The mobile projects are generated in CI with Capacitor from the `www/` assets. The desktop packages use Electron. For local packaging, run `npm ci`, `npm run package:web`, `python3 scripts/configure-native.py prepare-android` / `prepare-ios`, then `npx cap add android` / `npx cap add ios` with the matching platform SDK. Run `python3 scripts/configure-native.py android` and `python3 scripts/install-android-widget.py` for Android; run `python3 scripts/configure-native.py ios` and `ruby scripts/install-ios-widget.rb` for iOS. If Firebase is configured, rerun `pod install` inside `ios/App` after removing its generated `Podfile.lock`. Or run `npm run package:windows` / `npm run package:linux` on the matching OS. Native signing and system notifications still need separate setup.
 
@@ -38,16 +38,20 @@ Every widget reads the same snapshot (`src/widget-data.js`) in Hong Kong time: t
 
 Tapping a widget opens Today; a homework row opens that assignment and **Add** opens the homework form (via `timing://` links). The check circle completes homework in place (an App Intent on iOS 17+, a broadcast on Android); the app collects those check-offs next time it opens and syncs them. iOS widgets need iOS 17 or later; the app itself keeps Capacitor's minimum. The widgets use the system serif and monospace faces as stand-ins for Fraunces and JetBrains Mono, because widget processes cannot load the bundled web fonts.
 
-The iOS widgets use the `group.io.github.darrenintr.timing` App Group in both the app and extension: device signing must provision this group for both bundle IDs (`io.github.darrenintr.timing` and `io.github.darrenintr.timing.widget`). The CI IPA remains unsigned and needs both targets signed together for installation.
+The iOS widgets use the `group.io.github.darrenintr.timing` App Group in both the app and extension. Both ad hoc provisioning profiles must include this group and the device's UDID. CI signs both targets and exports one installable IPA.
 
 ## Google account sync setup
 
-The header has **Sign in with Google**. Homework, smaller steps, school-day overrides, and summer/winter lesson times synchronize by Firebase account; the underlying school calendar stays bundled in the app. It keeps an offline copy and merges existing local work on first sign-in. The repository's own Firebase project (`timing-49c6d`) is committed as public client settings in `src/firebase-config.js`, `GoogleService-Info.plist` and `google-services.json`; every build uses it unless the settings below override it. Set `TIMING_FIREBASE_CONFIG` to `{}` for a local-only build.
+Settings has **Sign in with Google**. Homework, smaller steps, school-day overrides, and summer/winter lesson times synchronize by Firebase account; the underlying school calendar stays bundled in the app. It keeps an offline copy and merges existing local work on first sign-in. The repository's own Firebase project (`timing-49c6d`) is committed as public client settings in `src/firebase-config.js`, `GoogleService-Info.plist` and `google-services.json`; every build uses it unless the settings below override it. Set `TIMING_FIREBASE_CONFIG` to `{}` for a local-only build.
 
 1. Create a Firebase project, register a Web app and Android/iOS apps with the ID `io.github.darrenintr.timing`, enable **Authentication → Google**, and create a **Cloud Firestore** database. Deploy the owner-only rules in [`firestore.rules`](firestore.rules). Add the hosted PWA's domain to Firebase Authentication's authorized domains.
 2. Set the repository Actions variable `TIMING_FIREBASE_CONFIG` to the public Web app JSON config, e.g. `{"apiKey":"...","authDomain":"...firebaseapp.com","projectId":"...","appId":"..."}`. Locally, pass the same JSON environment variable to `npm run package:web`. These are public client settings, not a service-account key.
-3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. For stable Google sign-in across releases, set `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` and register that key's SHA-1 in Firebase. The signed build checks the SHA-1. Without a release key the workflow publishes a debug APK.
-4. For iOS CI, set `TIMING_FIREBASE_IOS_PLIST_BASE64` to the base64 contents of `GoogleService-Info.plist` for the iOS app. The build script includes the plist and its reversed client ID URL scheme. The IPA is still unsigned and needs Apple signing before installation.
+3. For Android CI, set the secret `TIMING_FIREBASE_ANDROID_JSON_BASE64` to the base64 contents of the Android app's `google-services.json`. Set `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, and register that key's SHA-1 in Firebase. CI requires the stable key and checks its SHA-1.
+4. For iOS CI, set `TIMING_FIREBASE_IOS_PLIST_BASE64` to the base64 contents of `GoogleService-Info.plist` for the iOS app. The build script includes the plist and its reversed client ID URL scheme. Set `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD`, `IOS_APP_PROFILE_BASE64`, `IOS_WIDGET_PROFILE_BASE64` and `IOS_TEAM_ID`. Use an Apple Distribution certificate and two ad hoc profiles for the bundle IDs above. The profiles must include the Timing App Group and registered test devices. CI verifies the profiles, signs both targets and exports `Timing-ios.ipa`.
+
+### Check Google sign-in on an installed iOS build
+
+Install the signed IPA on a device registered in both profiles, then open Settings → **Sign in with Google**. Choose an account and confirm that Settings shows the account and **Synced with Google**. Add a homework item, close and reopen the app, and confirm the item remains. Sign in to the HTTPS web app with the same account and confirm the item appears there; edit it on the web and confirm the change returns to iOS after reopening. This tests Google sign-in, the Firebase session, Firestore read/write, and the app's sync path. The CI bundle checks cannot replace this device test. If sign-in fails, note the exact message in Settings and check the device console, the iOS Firebase plist, reversed client ID URL scheme, and both signing profiles.
 
 If a native project file is missing while the Web config is supplied, its CI job fails rather than publishing a package with broken native sign-in. A package built without any Firebase config excludes the native Firebase plugin (which requires a plist at launch), still works locally, and shows the setup status instead of pretending to sync. Desktop packages use a custom app scheme and cannot complete Firebase's browser popup flow; use the HTTPS PWA for Google sign-in there. Google account sync is distinct from live Google Calendar integration; calendar `.ics` exports still require importing again after changes.
 
@@ -58,7 +62,7 @@ If a native project file is missing while the Web config is supplied, its CI job
 - Lessons stop after the S6 last school day on 1 February 2027, even though the school calendar continues for other year groups.
 - Homework stores a subject and the day it was assigned. The due lesson is recomputed when a date is marked as no school, restored to normal, or given another cycle letter.
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
-- Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Notifications and live Google/Apple Calendar synchronization are future platform integrations.
+- Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Settings can export or import a JSON backup of homework and timetable changes. Import merges with the current data, with matching items from the backup winning. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Notifications and live Google/Apple Calendar synchronization are future platform integrations.
 
 ## Homework
 
@@ -74,7 +78,7 @@ Settings → **Sign in with Google** keeps homework, day overrides and the summe
 
 - `src/sync-data.js` merges local changes record by record and retains deletion markers; `src/cloud.js` signs in and synchronizes the document at `timingUsers/{uid}/data/s6`. The accompanying `firestore.rules` restrict access to each account's own document.
 - Firebase Web configuration is provided through the `TIMING_FIREBASE_CONFIG` Actions variable or local environment variable. The public Firebase project files on the feature branch are reference material; CI includes the native plugin only when matching Web and native configuration are provided. Desktop packages remain local because the Electron app scheme cannot complete Firebase popup sign-in.
-- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on pushes to `main`. Add its domain to Firebase Authentication's authorized domains. The service worker cache version in `sw.js` must change with a release.
+- The web version is published to GitHub Pages by [Publish web app](.github/workflows/pages.yml) on pushes to `main`. Add its domain to Firebase Authentication's authorized domains. The web packaging script hashes built assets into the service worker cache name; the app offers a reload when an update is ready.
 
 ## Design
 

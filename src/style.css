@@ -248,6 +248,10 @@ em.overdue{color:var(--danger)}em.today{color:var(--warm)}em.unconfirmed{color:v
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 .sync-indicator{margin:12px 0 0;color:var(--ink-3);font-size:12px;line-height:1.4}
 .sync-indicator.error{color:var(--danger)}
+.storage-indicator{margin:8px 0 0;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;color:var(--danger);font-size:13px;line-height:1.4}
+.storage-indicator[hidden]{display:none}
+.update-indicator{margin:8px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.4}
+.backup-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .native-app .top{padding-top:calc(14px + max(24px, env(safe-area-inset-top, 0px)))}
 @media(display-mode:standalone){.top{padding-top:calc(14px + max(24px, env(safe-area-inset-top, 0px)))}}
 

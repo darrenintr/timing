@@ -1,11 +1,17 @@
-const CACHE = 'timing-v6';
+const CACHE = 'timing-__TIMING_CACHE_VERSION__';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-maskable.svg', './icon-monochrome.svg', './src/main.js', './src/style.css', './src/fonts/roboto-flex.woff2', './src/fonts/fraunces.woff2', './src/fonts/fraunces-italic.woff2', './src/fonts/jetbrains-mono.woff2'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))));
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const old = (await caches.keys()).filter(key => key.startsWith('timing-') && key !== CACHE);
+    await Promise.all(old.map(key => caches.delete(key)));
+    await self.clients.claim();
+    if (old.length) {
+      for (const client of await self.clients.matchAll({type:'window'})) client.postMessage({type:'TIMING_UPDATE_READY'});
+    }
+  })());
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;

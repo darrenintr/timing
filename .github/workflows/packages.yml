@@ -12,10 +12,20 @@ permissions:
 
 jobs:
   android:
-    name: Android APK
+    name: Signed Android APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require stable Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Missing $name; refusing to publish an unstable debug APK."; exit 1; fi
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -38,11 +48,7 @@ jobs:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_ANDROID_JSON_BASE64: ${{ secrets.TIMING_FIREBASE_ANDROID_JSON_BASE64 }}
       - run: python3 scripts/install-android-widget.py
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug
-        working-directory: android
-      - name: Package Android APK
-        # A stable release key is needed for Android Google sign-in across CI builds.
+      - name: Package signed Android APK
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -50,12 +56,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           mkdir -p dist
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            cp android/app/build/outputs/apk/debug/app-debug.apk dist/Timing-android.apk
-            echo '::warning::No persistent release key supplied; publishing a debug APK. Google sign-in fails unless this runner'"'"'s debug key SHA-1 is registered in Firebase.'
-            exit 0
-          fi
           (cd android && ./gradlew assembleRelease)
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/timing.jks"
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
@@ -83,10 +85,21 @@ jobs:
           if-no-files-found: error
 
   ios:
-    name: iOS unsigned IPA
+    name: Signed iOS IPA
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require iOS signing credentials
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_APP_PROFILE_BASE64: ${{ secrets.IOS_APP_PROFILE_BASE64 }}
+          IOS_WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          for name in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD IOS_APP_PROFILE_BASE64 IOS_WIDGET_PROFILE_BASE64 IOS_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "::error::Missing $name; a device-installable IPA cannot be built."; exit 1; fi
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -103,6 +116,14 @@ jobs:
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
+      - name: Install iOS signing certificate and profiles
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_APP_PROFILE_BASE64: ${{ secrets.IOS_APP_PROFILE_BASE64 }}
+          IOS_WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: bash scripts/install-ios-signing.sh
       - run: ruby scripts/install-ios-widget.rb
       - run: rm -f Podfile.lock && pod install
         working-directory: ios/App
@@ -112,20 +133,26 @@ jobs:
           grep -q FirebaseAuthentication ios/App/Podfile || test "$TIMING_FIREBASE_CONFIG" = '{}'
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
-      - name: Compile without signing
-        run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build
+      - name: Archive signed app and widget
+        run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath build/ios/Timing.xcarchive DEVELOPMENT_TEAM="$IOS_TEAM_ID" archive
       - name: Verify widget extension is embedded
-        run: test -d build/ios/Build/Products/Release-iphoneos/App.app/PlugIns/TimingWidget.appex
-      - name: Package unsigned IPA
+        run: test -d build/ios/Timing.xcarchive/Products/Applications/App.app/PlugIns/TimingWidget.appex
+      - name: Export device-installable IPA
         run: |
-          mkdir -p dist/Payload
-          cp -R build/ios/Build/Products/Release-iphoneos/App.app dist/Payload/Timing.app
-          cd dist
-          zip -qr Timing-unsigned.ipa Payload
+          python3 scripts/write-ios-export-options.py
+          xcodebuild -exportArchive -archivePath build/ios/Timing.xcarchive -exportPath dist/ios -exportOptionsPlist "$RUNNER_TEMP/timing-export-options.plist"
+          set -- dist/ios/*.ipa
+          test "$#" -eq 1 && test -f "$1" || { echo '::error::Expected exactly one exported IPA.'; exit 1; }
+          mv "$1" dist/Timing-ios.ipa
+          mkdir -p "$RUNNER_TEMP/timing-ipa"
+          unzip -q dist/Timing-ios.ipa -d "$RUNNER_TEMP/timing-ipa"
+          test -f "$RUNNER_TEMP/timing-ipa/Payload/App.app/embedded.mobileprovision"
+          test -f "$RUNNER_TEMP/timing-ipa/Payload/App.app/PlugIns/TimingWidget.appex/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/timing-ipa/Payload/App.app"
       - uses: actions/upload-artifact@v4
         with:
-          name: Timing-iOS-unsigned-IPA
-          path: dist/Timing-unsigned.ipa
+          name: Timing-iOS-signed-IPA
+          path: dist/Timing-ios.ipa
           if-no-files-found: error
 
   windows:
@@ -192,4 +219,4 @@ jobs:
           gh release create "build-${GITHUB_RUN_NUMBER}" release-assets/*.apk release-assets/*.ipa release-assets/*.exe release-assets/*.deb \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Timing build ${GITHUB_RUN_NUMBER}" --prerelease \
-            --notes "Android APK (release-signed when a release key is configured; otherwise debug), Windows portable EXE, Ubuntu DEB, and unsigned iOS IPA. Google sign-in requires Firebase configuration and matching signing credentials. The IPA requires Apple signing before device installation."
+            --notes "Signed Android APK, signed iOS IPA for registered devices, Windows portable EXE, and Ubuntu DEB. Google sign-in still requires a live device check after installation."
