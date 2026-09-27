@@ -1,0 +1,43 @@
+name: Bootstrap persistent iOS project
+
+on:
+  push:
+    branches: [fix/xcode-cloud-project]
+    paths:
+      - '.github/workflows/bootstrap-ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/xcode-cloud-project
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run package:web
+      - run: python3 scripts/configure-native.py prepare-ios
+      - run: npx cap add ios
+      - run: python3 scripts/configure-native.py ios
+      - run: ruby scripts/install-ios-widget.rb
+      - run: rm -f Podfile.lock && pod install
+        working-directory: ios/App
+      - name: Verify generated Xcode project
+        run: |
+          test -f ios/App/App.xcodeproj/project.pbxproj
+          test -f ios/App/App.xcworkspace/contents.xcworkspacedata
+          grep -q 'TimingWidget' ios/App/App.xcodeproj/project.pbxproj
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build
+      - name: Commit persistent iOS project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ios
+          git commit -m "Commit persistent iOS project for Xcode Cloud"
+          git push origin HEAD:fix/xcode-cloud-project
