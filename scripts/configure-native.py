@@ -53,10 +53,14 @@ elif platform == 'ios':
         print('iOS local-only build: no native Firebase plugin')
         sys.exit(0)
     podfile = Path('ios/App/Podfile')
-    content = podfile.read_text().replace('  # Add your Pods here',
-      "  pod 'CapacitorFirebaseAuthentication/Google', :path => '../../node_modules/@capacitor-firebase/authentication'\n  # Add your Pods here")
-    content = content.replace('  assertDeploymentTarget(installer)',
-      "  assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    if target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'\n      target.build_configurations.each { |config| config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO' }\n    end\n  end")
+    content = podfile.read_text()
+    google_pod = "  pod 'CapacitorFirebaseAuthentication/Google', :path => '../../node_modules/@capacitor-firebase/authentication'"
+    if google_pod not in content:
+        content = content.replace('  # Add your Pods here', google_pod + "\n  # Add your Pods here")
+    signing_patch = "  installer.pods_project.targets.each do |target|\n    if target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'\n      target.build_configurations.each { |config| config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO' }\n    end\n  end"
+    if signing_patch not in content:
+        content = content.replace('  assertDeploymentTarget(installer)',
+          '  assertDeploymentTarget(installer)\n' + signing_patch)
     podfile.write_text(content)
     raw = native_file('ios')
     if not raw:
@@ -68,17 +72,26 @@ elif platform == 'ios':
     Path('ios/App/App/GoogleService-Info.plist').write_bytes(raw)
     info = Path('ios/App/App/Info.plist')
     info_data = plistlib.loads(info.read_bytes())
-    info_data.setdefault('CFBundleURLTypes', []).append({'CFBundleURLSchemes': [reversed_id]})
+    url_types = info_data.setdefault('CFBundleURLTypes', [])
+    if not any(reversed_id in item.get('CFBundleURLSchemes', []) for item in url_types):
+        url_types.append({'CFBundleURLSchemes': [reversed_id]})
     info.write_bytes(plistlib.dumps(info_data))
     project = Path('ios/App/App.xcodeproj/project.pbxproj')
     content = project.read_text()
     build_id, file_id = 'A1B2C3D4E5F60718293A4B5C', 'A1B2C3D4E5F60718293A4B5D'
-    content = content.replace('/* End PBXBuildFile section */',
-      f'\t\t{build_id} /* GoogleService-Info.plist in Resources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* GoogleService-Info.plist */; }};\n/* End PBXBuildFile section */')
-    content = content.replace('/* End PBXFileReference section */',
-      f'\t\t{file_id} /* GoogleService-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; }};\n/* End PBXFileReference section */')
-    content = content.replace('/* AppDelegate.swift */,\n', f'/* AppDelegate.swift */,\n\t\t\t\t{file_id} /* GoogleService-Info.plist */,\n', 1)
-    content = content.replace('/* config.xml in Resources */,\n', f'/* config.xml in Resources */,\n\t\t\t\t{build_id} /* GoogleService-Info.plist in Resources */,\n', 1)
+    if build_id not in content:
+        content = content.replace('/* End PBXBuildFile section */',
+          f'\t\t{build_id} /* GoogleService-Info.plist in Resources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* GoogleService-Info.plist */; }};\n/* End PBXBuildFile section */')
+    file_reference = f'{file_id} /* GoogleService-Info.plist */ = {{isa = PBXFileReference;'
+    if file_reference not in content:
+        content = content.replace('/* End PBXFileReference section */',
+          f'\t\t{file_id} /* GoogleService-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; }};\n/* End PBXFileReference section */')
+    group_entry = f'{file_id} /* GoogleService-Info.plist */,'
+    if group_entry not in content:
+        content = content.replace('/* AppDelegate.swift */,\n', f'/* AppDelegate.swift */,\n\t\t\t\t{file_id} /* GoogleService-Info.plist */,\n', 1)
+    resource_entry = f'{build_id} /* GoogleService-Info.plist in Resources */,'
+    if resource_entry not in content:
+        content = content.replace('/* config.xml in Resources */,\n', f'/* config.xml in Resources */,\n\t\t\t\t{build_id} /* GoogleService-Info.plist in Resources */,\n', 1)
     project.write_text(content)
     print('iOS Google sign-in plist, URL scheme and build resource installed')
 else:
