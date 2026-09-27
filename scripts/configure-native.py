@@ -82,12 +82,15 @@ elif platform == 'ios':
     if build_id not in content:
         content = content.replace('/* End PBXBuildFile section */',
           f'\t\t{build_id} /* GoogleService-Info.plist in Resources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* GoogleService-Info.plist */; }};\n/* End PBXBuildFile section */')
-    if file_id not in content:
+    file_reference = f'{file_id} /* GoogleService-Info.plist */ = {{isa = PBXFileReference;'
+    if file_reference not in content:
         content = content.replace('/* End PBXFileReference section */',
           f'\t\t{file_id} /* GoogleService-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; }};\n/* End PBXFileReference section */')
+    group_entry = f'{file_id} /* GoogleService-Info.plist */,'
+    if group_entry not in content:
         content = content.replace('/* AppDelegate.swift */,\n', f'/* AppDelegate.swift */,\n\t\t\t\t{file_id} /* GoogleService-Info.plist */,\n', 1)
-    resource_line = f'{build_id} /* GoogleService-Info.plist in Resources */'
-    if resource_line not in content:
+    resource_entry = f'{build_id} /* GoogleService-Info.plist in Resources */,'
+    if resource_entry not in content:
         content = content.replace('/* config.xml in Resources */,\n', f'/* config.xml in Resources */,\n\t\t\t\t{build_id} /* GoogleService-Info.plist in Resources */,\n', 1)
     project.write_text(content)
     print('iOS Google sign-in plist, URL scheme and build resource installed')
