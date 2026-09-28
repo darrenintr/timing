@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
 import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
 import { onWidgetOpen, refreshWidget, takeWidgetCompletions } from './native-widget.js';
-import { completeFromWidget } from './widget-data.js';
+import { completeFromWidget, widgetData } from './widget-data.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
@@ -322,9 +322,36 @@ function settingsView() {
       <p class="hint">Import into Apple or Google Calendar, including homework reminders. It does not live-sync — export again after changes.</p>
     </section>
     <section class="block setting">
+      ${label('Scriptable widget')}
+      <button class="button" data-scriptable-export>Copy widget data</button>
+      <p class="hint" id="scriptable-export-status" role="status">Open the <a href="https://github.com/darrenintr/timing/blob/main/scriptable/Timing%20Widget.js" target="_blank" rel="noopener noreferrer">Timing Widget script</a> in Scriptable after copying. Copy again after changing homework or the timetable.</p>
+    </section>
+    <section class="block setting">
       ${label('About')}
       <p class="hint">Timing follows the printed A–F letters from the school calendar. Verify exceptions with the school before relying on them for critical deadlines. This version does not send background notifications.</p>
     </section>`;
+}
+
+async function copyScriptableSnapshot() {
+  const status = app.querySelector('#scriptable-export-status');
+  const data = JSON.stringify({source:'timing-scriptable-v1', exportedAt:new Date().toISOString(), snapshot:widgetData(state, today())});
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(data);
+    else {
+      const field = document.createElement('textarea');
+      field.value = data;
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand('copy');
+      field.remove();
+      if (!copied) throw new Error('Copy failed');
+    }
+    if (status) status.textContent = 'Copied. Open Scriptable and run Timing Widget once to update the Home Screen widget.';
+  } catch (error) {
+    if (status) status.textContent = 'Clipboard access failed. Try copying again after allowing pasteboard access.';
+  }
 }
 
 /* ---------- Shell ---------- */
@@ -384,6 +411,7 @@ app.addEventListener('click', event => {
   }
   if (button.dataset.sync === 'signin') { void signIn(); return; }
   if (button.dataset.sync === 'signout') { void signOut(); return; }
+  if (button.dataset.scriptableExport !== undefined) { void copyScriptableSnapshot(); return; }
   if (button.dataset.export !== undefined) {
     const url = URL.createObjectURL(new Blob([calendarICS(state.homework, state.overrides, state.timeMode)], {type:'text/calendar;charset=utf-8'}));
     const link = document.createElement('a'); link.href = url; link.download = 'timing-s6-calendar.ics'; link.click();
