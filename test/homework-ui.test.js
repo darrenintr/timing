@@ -51,6 +51,36 @@ test('Add homework click reaches submit instead of replacing the form first', as
   assert.equal(updated.title, 'Economics worksheet revised');
   const editedRevision = JSON.parse(stored.get('timing-s6-v1:guest')).homework[savedId].rev[0];
   assert.ok(editedRevision > firstRevision, 'edits receive a newer sync revision');
+
+  listeners.click({target:{closest: () => action({view:'today'})}});
+  listeners.click({target:{closest: () => action({view:'homework'})}});
+  assert.match(app.innerHTML, /role="dialog" aria-modal="true" aria-label="Homework"/);
+  assert.match(app.innerHTML, /class="shell view-today" inert/);
+  listeners.click({target:{closest: () => action({compose:''})}});
+  form.values.title = 'Added from Today';
+  listeners.submit({target:form, preventDefault(){}});
+  assert.match(app.innerHTML, /Added from Today/);
+  assert.match(app.innerHTML, /role="dialog" aria-modal="true"/);
+  listeners.click({target:{closest: () => action({closeHomework:''})}});
+  assert.doesNotMatch(app.innerHTML, /class="homework-overlay"/);
+  assert.match(app.innerHTML, /class="shell view-today"/);
+
+  const topHomework = {...action({view:'homework'}), closest: selector => selector === '.top' ? {} : null};
+  listeners.click({target:{closest: () => topHomework}});
+  assert.match(app.innerHTML, /class="shell view-homework"/);
+  assert.doesNotMatch(app.innerHTML, /class="homework-overlay"/);
+
+  listeners.click({target:{closest: () => action({view:'calendar'})}});
+  listeners.click({target:{closest: () => action({pick:'2026-01-31'})}});
+  listeners.click({target:{closest: () => action({step:'1'})}});
+  assert.match(app.innerHTML, /data-pick="2026-02-28"[^>]*aria-pressed="true"/);
+  const swipeTarget = {closest: selector => selector === '.calendar-swipe' ? {} : null};
+  listeners.pointerdown({target:swipeTarget, pointerId:1, clientX:240, clientY:150});
+  listeners.pointerup({pointerId:1, clientX:130, clientY:155, preventDefault(){}});
+  assert.match(app.innerHTML, /data-pick="2026-03-28"[^>]*aria-pressed="true"/);
+  listeners.pointerdown({target:swipeTarget, pointerId:2, clientX:240, clientY:150});
+  listeners.pointerup({pointerId:2, clientX:130, clientY:270, preventDefault(){throw Error('vertical scrolling was blocked');}});
+  assert.match(app.innerHTML, /data-pick="2026-03-28"[^>]*aria-pressed="true"/);
   globalThis.confirm = () => true;
   const restored = {...updated, id:'restored', title:'From backup'};
   const backup = createBackup({homework:[restored], overrides:{'2026-10-02':{type:'holiday'}}, timeMode:'winter'});

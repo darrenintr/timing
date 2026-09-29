@@ -335,3 +335,30 @@ html,body{background:
 .day.flag::after{top:6px;right:6px}
 #homework-section:not(:has(.composer[open])){padding:0;background:none;border:0;box-shadow:none}
 .plain-select{margin-left:auto}
+.tab,.button,.due-row,.icon-btn,.add-inline,.check{transition:background .15s,color .15s,transform .16s var(--ease)}
+.tab:active,.button:active,.due-row:active,.icon-btn:active,.add-inline:active,.check:active{transform:scale(.96)}
+
+/* Swipe leaves vertical scrolling and date taps intact. */
+.calendar-swipe{touch-action:pan-y;overscroll-behavior-x:contain}
+.month-enter-next{animation:month-from-right .22s var(--ease) both}
+.month-enter-previous{animation:month-from-left .22s var(--ease) both}
+@keyframes month-from-right{from{opacity:.55;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes month-from-left{from{opacity:.55;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+
+/* Homework opened from Today floats over the current day. */
+body:has(.homework-overlay){overflow:hidden}
+.homework-overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px}
+.overlay-backdrop{position:absolute;inset:0;width:100%;height:100%;background:rgba(14,20,18,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.homework-dialog{position:relative;width:min(100%,620px);max-height:min(88dvh,850px);overflow:hidden;border:1px solid var(--line);border-radius:28px;background:var(--paper);box-shadow:var(--shadow-float);animation:overlay-in .24s var(--ease) both}
+.overlay-content{max-height:inherit;overflow-y:auto;overscroll-behavior:contain;padding:0 24px 28px}
+.overlay-content .hero{padding-top:28px;padding-right:44px}
+.overlay-content .display{font-size:clamp(38px,9vw,54px)}
+.overlay-close{position:absolute;right:18px;top:20px;z-index:1;background:var(--surface);box-shadow:var(--shadow-1)}
+@keyframes overlay-in{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:600px){
+  .homework-overlay{align-items:end;padding:0}
+  .homework-dialog{width:100%;max-height:88dvh;border-radius:26px 26px 0 0;border-bottom:0}
+  .overlay-content{padding:0 16px calc(16px + env(safe-area-inset-bottom))}
+  .overlay-close{right:14px;top:18px}
+}
+@media(prefers-reduced-motion:reduce){.month-enter-next,.month-enter-previous,.homework-dialog{animation:none}}

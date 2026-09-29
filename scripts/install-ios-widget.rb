@@ -1,5 +1,5 @@
-# CocoaPods installs xcodeproj on the macOS runner. Capacitor recreates this
-# project on every build, so add the extension and App Group after `cap add ios`.
+# CocoaPods installs xcodeproj on the macOS runner. Some builds start from the
+# committed Xcode project; others start from a generated Capacitor project.
 require 'xcodeproj'
 require 'fileutils'
 
@@ -18,6 +18,33 @@ FileUtils.cp('native/ios/TimingWidget.swift', "#{widget_folder}/TimingWidget.swi
 FileUtils.cp('native/ios/TimingWidget-Info.plist', "#{widget_folder}/Info.plist")
 FileUtils.cp('native/ios/Timing.entitlements', "#{widget_folder}/Timing.entitlements")
 FileUtils.cp('native/ios/AppIcon-1024.png', "#{app_folder}/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png")
+
+def configure_bridge(app_folder)
+  info_path = "#{app_folder}/Info.plist"
+  info = Xcodeproj::Plist.read_from_path(info_path)
+  url_types = info['CFBundleURLTypes'] || []
+  unless url_types.any? { |type| type['CFBundleURLSchemes']&.include?('timing') }
+    url_types << {'CFBundleURLName' => 'io.github.darrenintr.timing', 'CFBundleURLSchemes' => ['timing']}
+    info['CFBundleURLTypes'] = url_types
+    Xcodeproj::Plist.write_to_path(info, info_path)
+  end
+
+  storyboard = "#{app_folder}/Base.lproj/Main.storyboard"
+  content = File.read(storyboard)
+  old = 'customClass="CAPBridgeViewController" customModule="Capacitor"'
+  current = 'customClass="TimingViewController" customModule="App"'
+  if content.include?(old)
+    File.write(storyboard, content.sub(old, current))
+  else
+    abort 'Capacitor bridge controller not found' unless content.include?(current)
+  end
+end
+
+if project.targets.any? { |target| target.name == 'TimingWidget' }
+  configure_bridge(app_folder)
+  puts 'Existing iOS widget project refreshed'
+  exit 0
+end
 
 app_group = project.main_group['App'] || abort('App group not found')
 %w[TimingWidgetPlugin.swift TimingViewController.swift].each do |name|
@@ -68,17 +95,5 @@ embed.add_file_reference(widget.product_reference)
 app.add_dependency(widget)
 project.save
 
-# Widget taps open timing://today, timing://homework/<id> and timing://homework/new.
-info_path = "#{app_folder}/Info.plist"
-info = Xcodeproj::Plist.read_from_path(info_path)
-info['CFBundleURLTypes'] = (info['CFBundleURLTypes'] || []) + [{
-  'CFBundleURLName' => 'io.github.darrenintr.timing', 'CFBundleURLSchemes' => ['timing']
-}]
-Xcodeproj::Plist.write_to_path(info, info_path)
-
-storyboard = "#{app_folder}/Base.lproj/Main.storyboard"
-content = File.read(storyboard)
-old = 'customClass="CAPBridgeViewController" customModule="Capacitor"'
-abort 'Capacitor bridge controller not found' unless content.include?(old)
-File.write(storyboard, content.sub(old, 'customClass="TimingViewController" customModule="App"'))
+configure_bridge(app_folder)
 puts 'iOS WidgetKit widgets, timing:// links, shared App Group, bridge, and Timing icon installed'

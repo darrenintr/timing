@@ -16,12 +16,12 @@ test('unconfigured native package excludes Firebase; configured one includes it'
     const run = (name, vars = {}) => execFileSync('python3', [script, name], {cwd:dir, env:{...process.env, TIMING_FIREBASE_CONFIG:'', TIMING_FIREBASE_IOS_PLIST_BASE64:'', TIMING_FIREBASE_ANDROID_JSON_BASE64:'', ...vars}});
     run('prepare-ios'); run('prepare-android');
     let config = JSON.parse(readFileSync(join(dir, 'capacitor.config.json')));
-    assert.deepEqual(config.ios.includePlugins, []);
-    assert.deepEqual(config.android.includePlugins, []);
+    assert.deepEqual(config.ios.includePlugins, ['@capacitor/haptics']);
+    assert.deepEqual(config.android.includePlugins, ['@capacitor/haptics']);
     run('prepare-ios', {TIMING_FIREBASE_CONFIG:'{"projectId":"example"}', TIMING_FIREBASE_IOS_PLIST_BASE64:'Zml4dHVyZQ=='});
     config = JSON.parse(readFileSync(join(dir, 'capacitor.config.json')));
-    assert.deepEqual(config.ios.includePlugins, ['@capacitor-firebase/authentication']);
-    assert.deepEqual(config.android.includePlugins, []);
+    assert.deepEqual(config.ios.includePlugins, ['@capacitor/haptics', '@capacitor-firebase/authentication']);
+    assert.deepEqual(config.android.includePlugins, ['@capacitor/haptics']);
   } finally { rmSync(dir, {recursive:true, force:true}); }
 });
 
@@ -33,10 +33,10 @@ test('committed Firebase project files enable native sign-in without CI secrets'
     const run = (name, vars = {}) => execFileSync('python3', [script, name], {cwd:dir, env:{...process.env, TIMING_FIREBASE_CONFIG:'', TIMING_FIREBASE_IOS_PLIST_BASE64:'', TIMING_FIREBASE_ANDROID_JSON_BASE64:'', ...vars}});
     run('prepare-ios'); run('prepare-android');
     let config = JSON.parse(readFileSync(join(dir, 'capacitor.config.json')));
-    assert.deepEqual(config.ios.includePlugins, ['@capacitor-firebase/authentication']);
-    assert.deepEqual(config.android.includePlugins, ['@capacitor-firebase/authentication']);
+    assert.deepEqual(config.ios.includePlugins, ['@capacitor/haptics', '@capacitor-firebase/authentication']);
+    assert.deepEqual(config.android.includePlugins, ['@capacitor/haptics', '@capacitor-firebase/authentication']);
     run('prepare-ios', {TIMING_FIREBASE_CONFIG:'{}'});
     config = JSON.parse(readFileSync(join(dir, 'capacitor.config.json')));
-    assert.deepEqual(config.ios.includePlugins, [], 'an empty JSON config opts out of the committed project');
+    assert.deepEqual(config.ios.includePlugins, ['@capacitor/haptics'], 'an empty JSON config opts out of Firebase while retaining haptics');
   } finally { rmSync(dir, {recursive:true, force:true}); }
 });
