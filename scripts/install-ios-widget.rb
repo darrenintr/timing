@@ -32,6 +32,12 @@ widget.source_build_phase.add_file_reference(widget_ref)
 
 app.build_configurations.each do |configuration|
   configuration.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'App/Timing.entitlements'
+  if ENV['IOS_TEAM_ID'] && ENV['IOS_APP_PROFILE_NAME']
+    configuration.build_settings['DEVELOPMENT_TEAM'] = ENV['IOS_TEAM_ID']
+    configuration.build_settings['CODE_SIGN_STYLE'] = 'Manual'
+    configuration.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['IOS_APP_PROFILE_NAME']
+    configuration.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+  end
 end
 widget.build_configurations.each do |configuration|
   configuration.build_settings.merge!({
@@ -48,6 +54,12 @@ widget.build_configurations.each do |configuration|
     'LD_RUNPATH_SEARCH_PATHS' => '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks',
     'SKIP_INSTALL' => 'YES'
   })
+  if ENV['IOS_TEAM_ID'] && ENV['IOS_WIDGET_PROFILE_NAME']
+    configuration.build_settings['DEVELOPMENT_TEAM'] = ENV['IOS_TEAM_ID']
+    configuration.build_settings['CODE_SIGN_STYLE'] = 'Manual'
+    configuration.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['IOS_WIDGET_PROFILE_NAME']
+    configuration.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+  end
 end
 
 embed = app.new_copy_files_build_phase('Embed App Extensions')
