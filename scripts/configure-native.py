@@ -33,7 +33,10 @@ if platform in ('prepare-android', 'prepare-ios'):
         sys.exit(f'Firebase web config provided but the {target} native Firebase file is missing')
     config_file = Path('capacitor.config.json')
     settings = json.loads(config_file.read_text())
-    settings[target] = {'includePlugins': ['@capacitor-firebase/authentication'] if config else []}
+    plugins = ['@capacitor/haptics']
+    if config:
+        plugins.append('@capacitor-firebase/authentication')
+    settings[target] = {'includePlugins': plugins}
     config_file.write_text(json.dumps(settings, indent=2) + '\n')
     print(f'{target} Firebase plugin ' + ('enabled' if config else 'excluded (no Firebase project configured)'))
 elif platform == 'android':
