@@ -6,6 +6,7 @@ import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp
 import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
 import { onWidgetOpen, refreshWidget, takeWidgetCompletions } from './native-widget.js';
 import { completeFromWidget, widgetData } from './widget-data.js';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
@@ -28,10 +29,18 @@ const state = {
   timeMode: local.timeMode,
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set()
+  composing: false, expanded: new Set(), homeworkOverlay: false, monthMotion: 0
 };
 const app = document.querySelector('#app');
 if (nativeApp) document.documentElement.classList.add('native-app');
+function feedback(kind = 'tap') {
+  if (nativeApp) {
+    const pulse = kind === 'success' ? Haptics.notification({type:NotificationType.Success})
+      : kind === 'selection' ? Haptics.selectionChanged()
+      : Haptics.impact({style:ImpactStyle.Light});
+    void pulse.catch(() => {});
+  } else if (kind !== 'selection') globalThis.navigator?.vibrate?.(kind === 'success' ? 18 : 8);
+}
 function showSyncStatus() {
   const panel = app.querySelector('.sync-indicator');
   if (panel) {
@@ -178,6 +187,16 @@ function todayView() {
 
 /* ---------- Calendar ---------- */
 
+function changeMonth(direction) {
+  const [year, month, day] = state.date.split('-').map(Number);
+  const first = new Date(Date.UTC(year, month - 1 + direction, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  state.date = `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+  state.monthMotion = direction;
+  feedback('selection');
+  persist(); render();
+}
+
 function calendarView() {
   const [year, month] = state.date.split('-').map(Number);
   const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
@@ -198,8 +217,8 @@ function calendarView() {
       <div class="hero-row"><h1 class="display">${monthName} <span class="year">${year}</span></h1>
         <div class="stepper"><button class="icon-btn" data-step="-1" aria-label="Previous month">${icon('chevron_left')}</button><button class="icon-btn" data-step="1" aria-label="Next month">${icon('chevron_right')}</button></div></div>
     </header>
-    <section class="block">
-      <div class="month">${['S','M','T','W','T','F','S'].map(day => `<span class="wd" aria-hidden="true">${day}</span>`).join('')}${cells.join('')}</div>
+    <section class="block calendar-swipe" aria-label="Calendar, swipe left or right to change month">
+      <div class="month ${state.monthMotion ? `month-enter-${state.monthMotion > 0 ? 'next' : 'previous'}` : ''}">${['S','M','T','W','T','F','S'].map(day => `<span class="wd" aria-hidden="true">${day}</span>`).join('')}${cells.join('')}</div>
       <p class="legend"><span><b class="mono">A–F</b> cycle day</span><span><i class="sw special"></i> special / exams</span><span><i class="sw flag"></i> check changes</span></p>
     </section>
     <section class="block picked">
@@ -356,11 +375,23 @@ async function copyScriptableSnapshot() {
 
 /* ---------- Shell ---------- */
 
+let overlayReturnFocus = null;
+function closeHomeworkOverlay() {
+  state.homeworkOverlay = false;
+  state.editingId = null;
+  state.prefillSubject = null;
+  state.composing = false;
+  feedback();
+  render();
+  if (overlayReturnFocus) app.querySelector(overlayReturnFocus)?.focus?.({preventScroll:true});
+  overlayReturnFocus = null;
+}
+
 function render() {
   const open = state.homework.filter(item => !item.done).length;
   const tab = (view, text) => `<button class="tab ${state.view === view ? 'active' : ''}" data-view="${view}" ${state.view === view ? 'aria-current="page"' : ''}>${text}${view === 'homework' && open ? `<sup>${open}</sup>` : ''}</button>`;
   const body = {today: todayView, calendar: calendarView, homework: homeworkView, settings: settingsView}[state.view]();
-  app.innerHTML = `<div class="shell view-${state.view}">
+  app.innerHTML = `<div class="shell view-${state.view}" ${state.homeworkOverlay ? 'inert aria-hidden="true"' : ''}>
   <nav class="top" aria-label="Main">
     <button class="brand" data-view="today" aria-label="Timing, go to Today"><img src="./icon.svg" alt="" width="26" height="26"><span>timing</span></button>
     <div class="tabs">${tab('today', 'Today')}${tab('calendar', 'Calendar')}${tab('homework', 'Homework')}</div>
@@ -368,7 +399,7 @@ function render() {
   </nav>
   <p class="sync-indicator ${syncError ? 'error' : ''}" role="status">${escapeHTML(syncNotice)}</p>
   <main>${body}</main>
-</div>`;
+</div>${state.homeworkOverlay ? `<div class="homework-overlay"><button class="overlay-backdrop" data-close-homework tabindex="-1" aria-label="Close homework"></button><section class="homework-dialog" role="dialog" aria-modal="true" aria-label="Homework"><button class="icon-btn overlay-close" data-close-homework aria-label="Close homework">${icon('close')}</button><div class="overlay-content">${homeworkView()}</div></section></div>` : ''}`;
 }
 
 app.addEventListener('click', event => {
@@ -376,34 +407,43 @@ app.addEventListener('click', event => {
   if (!button) return;
   // A form's submit click must reach its submit event before the DOM is rebuilt.
   if (button.type === 'submit' && button.closest('form')) return;
+  if (button.dataset.closeHomework !== undefined) { closeHomeworkOverlay(); return; }
   const viewBefore = state.view;
-  if (button.dataset.pick) state.date = button.dataset.pick;
-  if (button.dataset.view) state.view = button.dataset.view;
-  if (button.dataset.shift) state.date = addDays(state.date, Number(button.dataset.shift));
+  const openOverlay = viewBefore === 'today' && !state.homeworkOverlay && !button.closest('.top') &&
+    (button.dataset.compose !== undefined || button.dataset.newSubject || button.dataset.view === 'homework');
+  if (openOverlay) {
+    overlayReturnFocus = button.dataset.compose !== undefined ? '[data-compose]' : button.dataset.newSubject
+      ? `[data-new-subject="${button.dataset.newSubject}"]` : '[data-view="homework"]';
+    state.homeworkOverlay = true;
+  }
+  if (button.dataset.pick) { state.date = button.dataset.pick; state.monthMotion = 0; feedback('selection'); }
+  if (button.dataset.view && !openOverlay) {
+    state.view = button.dataset.view;
+    state.homeworkOverlay = false;
+    state.monthMotion = 0;
+  }
+  if (button.dataset.shift) { state.date = addDays(state.date, Number(button.dataset.shift)); feedback('selection'); }
   if (button.dataset.today !== undefined) state.date = today();
   const compose = button.dataset.compose !== undefined;
-  if (compose) { state.view = 'homework'; state.editingId = null; state.prefillSubject = null; state.composing = true; }
+  if (compose) { if (!openOverlay && !state.homeworkOverlay) state.view = 'homework'; state.editingId = null; state.prefillSubject = null; state.composing = true; }
   if (button.dataset.newSubject) {
     state.prefillSubject = button.dataset.newSubject;
     state.editingId = null;
     state.composing = true;
-    state.view = 'homework';
+    if (!state.homeworkOverlay) state.view = 'homework';
   }
-  if (button.dataset.step) {
-    const [year, month] = state.date.split('-').map(Number);
-    state.date = new Date(Date.UTC(year, month - 1 + Number(button.dataset.step), 1)).toISOString().slice(0,10);
-  }
+  if (button.dataset.step) { changeMonth(Number(button.dataset.step)); return; }
   if (button.dataset.toggle) {
     const item = state.homework.find(h => h.id === button.dataset.toggle);
-    if (item) item.done = !item.done;
+    if (item) { item.done = !item.done; feedback(item.done ? 'success' : 'tap'); }
   }
   if (button.dataset.stepToggle || button.dataset.stepRemove) {
     const task = state.homework.find(h => h.id === (button.dataset.stepToggle || button.dataset.stepRemove));
     const step = task?.steps?.find(step => step.id === button.dataset.stepId);
-    if (step && button.dataset.stepToggle) step.done = !step.done;
+    if (step && button.dataset.stepToggle) { step.done = !step.done; feedback(step.done ? 'success' : 'tap'); }
     if (step && button.dataset.stepRemove) task.steps = task.steps.filter(part => part.id !== step.id);
   }
-  if (button.dataset.edit) { state.editingId = button.dataset.edit; state.composing = true; state.view = 'homework'; }
+  if (button.dataset.edit) { state.editingId = button.dataset.edit; state.composing = true; if (!state.homeworkOverlay) state.view = 'homework'; }
   if (button.dataset.cancelEdit !== undefined) { state.editingId = null; state.prefillSubject = null; state.composing = false; }
   if (button.dataset.remove && confirm('Remove this homework?')) {
     state.homework = state.homework.filter(h => h.id !== button.dataset.remove);
@@ -417,15 +457,44 @@ app.addEventListener('click', event => {
     const link = document.createElement('a'); link.href = url; link.download = 'timing-s6-calendar.ics'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  if (state.view !== 'homework' && viewBefore === 'homework' && !state.editingId) state.composing = false;
+  if (state.view !== 'homework' && !state.homeworkOverlay && viewBefore === 'homework' && !state.editingId) state.composing = false;
+  if (openOverlay || button.dataset.view && state.view !== viewBefore) feedback();
   persist(); render();
   if (button.dataset.newSubject || button.dataset.edit || compose) {
-    app.querySelector('#homework-form')?.scrollIntoView({behavior:'smooth', block:'start'});
+    if (!state.homeworkOverlay) app.querySelector('#homework-form')?.scrollIntoView({behavior:'smooth', block:'start'});
     app.querySelector('#homework-form input[name="title"]')?.focus({preventScroll:true});
+  } else if (openOverlay) {
+    app.querySelector('.overlay-close')?.focus({preventScroll:true});
   } else if (button.dataset.view && state.view !== viewBefore) {
     globalThis.scrollTo?.({top:0});
   }
 });
+let calendarTouch = null;
+app.addEventListener('pointerdown', event => {
+  if (state.view !== 'calendar' || !event.target.closest?.('.calendar-swipe')) return;
+  calendarTouch = {id:event.pointerId, x:event.clientX, y:event.clientY};
+});
+app.addEventListener('pointerup', event => {
+  if (!calendarTouch || event.pointerId !== calendarTouch.id) return;
+  const dx = event.clientX - calendarTouch.x;
+  const dy = event.clientY - calendarTouch.y;
+  calendarTouch = null;
+  if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+  event.preventDefault();
+  changeMonth(dx < 0 ? 1 : -1);
+});
+app.addEventListener('pointercancel', () => { calendarTouch = null; });
+document.addEventListener?.('keydown', event => {
+  if (!state.homeworkOverlay) return;
+  if (event.key === 'Escape') { event.preventDefault(); closeHomeworkOverlay(); return; }
+  if (event.key !== 'Tab') return;
+  const focusable = [...app.querySelectorAll('.homework-dialog button:not([disabled]), .homework-dialog input:not([disabled]), .homework-dialog select:not([disabled]), .homework-dialog textarea:not([disabled]), .homework-dialog summary')]
+    .filter(element => element.getClientRects().length);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}, true);
 // Remember which <details> panels are open so a re-render does not collapse them.
 app.addEventListener('toggle', event => {
   const panel = event.target;
@@ -454,9 +523,9 @@ async function signOut() {
 }
 app.addEventListener('change', event => {
   const control = event.target.id || event.target.name;
-  if (control === 'homework-filter') { state.filter = event.target.value; render(); return; }
-  if (control === 'homework-subject-filter') { state.subjectFilter = event.target.value; render(); return; }
-  if (event.target.closest('#homework-form')) { updateDraftPreview(); return; }
+  if (control === 'homework-filter') { state.filter = event.target.value; feedback('selection'); render(); return; }
+  if (control === 'homework-subject-filter') { state.subjectFilter = event.target.value; feedback('selection'); render(); return; }
+  if (event.target.closest('#homework-form')) { feedback('selection'); updateDraftPreview(); return; }
   // Only settings controls re-render; typing in a step field must not replace its form mid-submit.
   if (!['time-mode', 'day-type', 'cycle-type'].includes(control)) return;
   if (control === 'time-mode') state.timeMode = event.target.value;
@@ -472,7 +541,7 @@ app.addEventListener('change', event => {
       if (state.overrides[state.date] && !Object.keys(state.overrides[state.date]).length) delete state.overrides[state.date];
     } else state.overrides[state.date] = {...state.overrides[state.date], cycle: event.target.value};
   }
-  persist(); render();
+  feedback('selection'); persist(); render();
 });
 app.addEventListener('input', event => {
   if (event.target.closest('#homework-form')) updateDraftPreview();
@@ -497,6 +566,7 @@ app.addEventListener('submit', event => {
       if (!Array.isArray(task.steps)) task.steps = [];
       task.steps.push({id:crypto.randomUUID(), title:title.slice(0, 100), done:false});
       state.expanded.add(task.id);
+      feedback('success');
       persist(); render();
       app.querySelector(`.step-form[data-task-id="${task.id}"] input`)?.focus();
     }
@@ -513,6 +583,7 @@ app.addEventListener('submit', event => {
     state.editingId = null;
     state.prefillSubject = null;
     state.composing = false;
+    feedback('success');
     persist(); render();
   } catch (error) {
     const message = app.querySelector('#form-error');
@@ -532,6 +603,7 @@ void collectWidgetCompletions();
 document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') void collectWidgetCompletions(); });
 onWidgetOpen(target => {
   state.view = target.view;
+  state.homeworkOverlay = false;
   if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; }
   if (target.id) { state.filter = 'open'; state.subjectFilter = 'all'; state.expanded.add(target.id); }
   render();
@@ -541,7 +613,7 @@ onWidgetOpen(target => {
 // Keep the "now" lesson current without disturbing a form that is being filled in.
 const clock = setInterval(() => {
   const active = globalThis.document?.activeElement;
-  if (state.view === 'today' && !(active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName))) render();
+  if (state.view === 'today' && !state.homeworkOverlay && !(active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName))) render();
 }, 60000);
 clock?.unref?.();
 
