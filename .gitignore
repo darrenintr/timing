@@ -1,6 +1,11 @@
 node_modules/
 www/
 /android/
-/ios/
 dist/
 build/
+
+# Keep the iOS Xcode project in Git so Xcode Cloud can discover it.
+ios/App/Pods/
+ios/App/build/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcworkspace/xcuserdata/

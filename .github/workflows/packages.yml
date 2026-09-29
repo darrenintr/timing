@@ -111,7 +111,7 @@ jobs:
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
-      - run: npx cap add ios
+      - run: npx cap sync ios
       - run: python3 scripts/configure-native.py ios
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}

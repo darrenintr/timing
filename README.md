@@ -21,6 +21,16 @@ The mobile projects are generated in CI with Capacitor from the `www/` assets. T
 
 ### Widgets
 
+#### Scriptable widget without iOS signing capabilities
+
+If an iOS sideloading certificate cannot provision the main app and widget extension separately with the same App Group, install [Scriptable](https://scriptable.app/) from the App Store instead. Its own signed widget displays Timing data without relying on the sideloaded extension:
+
+1. In Scriptable, create a script named **Timing Widget** and paste the contents of [`scriptable/Timing Widget.js`](scriptable/Timing%20Widget.js). Run it once to grant access and see the empty preview.
+2. In Timing, open **Settings → Scriptable widget → Copy widget data**.
+3. Open Scriptable and run **Timing Widget** once. It imports the copied snapshot and previews the result. Add a Scriptable widget to the iPad or iPhone Home Screen, then long press it and choose **Timing Widget** as its script.
+
+The saved snapshot contains future school days and open homework, so the widget advances to the correct day without reopening Timing. Repeat steps 2–3 whenever homework, day overrides or lesson times change. The widget refreshes on iOS's schedule; the operating system may defer the requested 15-minute refresh. Scriptable cannot mark homework complete inside the widget. This route does not need an Apple Developer account or an App Group for Timing.
+
 Android and iOS packages include a family of home-screen widgets and the Timing launcher icon, following the widget design (Today view reduced to a glance: hairlines instead of cards, the three type voices, colour only where it means something). Launch the app once after installing it, then add widgets from your device's widget picker.
 
 | Platform | Widget | Size | Shows |
