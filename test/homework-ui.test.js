@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createBackup} from '../src/backup.js';
 
 test('Add homework click reaches submit instead of replacing the form first', async () => {
   const listeners = {};
@@ -80,4 +81,11 @@ test('Add homework click reaches submit instead of replacing the form first', as
   listeners.pointerdown({target:swipeTarget, pointerId:2, clientX:240, clientY:150});
   listeners.pointerup({pointerId:2, clientX:130, clientY:270, preventDefault(){throw Error('vertical scrolling was blocked');}});
   assert.match(app.innerHTML, /data-pick="2026-03-28"[^>]*aria-pressed="true"/);
+  globalThis.confirm = () => true;
+  const restored = {...updated, id:'restored', title:'From backup'};
+  const backup = createBackup({homework:[restored], overrides:{'2026-10-02':{type:'holiday'}}, timeMode:'winter'});
+  listeners.change({target:{id:'backup-file', files:[{size:backup.length, text:async () => backup}]}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(homework().some(item => item.id === 'restored'), 'imported homework is persisted');
+  assert.equal(JSON.parse(stored.get('timing-s6-v1:guest')).timeMode.value, 'winter');
 });

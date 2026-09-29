@@ -4,23 +4,70 @@ import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
 import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
 import { captureChanges, emptySnapshot, fromLegacy, materialize, mergeSnapshots, revisionClock } from './sync-data.js';
-import { onWidgetOpen, refreshWidget, takeWidgetCompletions } from './native-widget.js';
 import { completeFromWidget, widgetData } from './widget-data.js';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+import { onWidgetOpen, refreshWidget, takeWidgetCompletions } from './native-widget.js';
+import { createBackup, mergeBackup, parseBackup } from './backup.js';
 
 const key = 'timing-s6-v1';
 const views = ['today', 'calendar', 'homework', 'settings'];
-const saved = (() => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } })();
-const read = name => { try { return JSON.parse(localStorage.getItem(name)); } catch { return null; } };
+let storageWarning = '';
+let storageAvailable = true;
+let recoveredRaw = null;
+const memory = new Map();
+const storage = {
+  getItem(name) {
+    if (memory.has(name)) return memory.get(name);
+    try { return localStorage.getItem(name); }
+    catch { storageAvailable = false; storageWarning = 'Device storage is unavailable. Changes may be lost when this window closes; export a backup.'; return null; }
+  },
+  setItem(name, value) {
+    memory.set(name, value);
+    try { localStorage.setItem(name, value); return true; }
+    catch { storageAvailable = false; storageWarning = 'Device storage is full or unavailable. Changes may be lost when this window closes; export a backup.'; return false; }
+  },
+  removeItem(name) {
+    memory.delete(name);
+    try { localStorage.removeItem(name); }
+    catch { storageAvailable = false; storageWarning = 'Device storage is unavailable. Changes may be lost when this window closes; export a backup.'; }
+  }
+};
+const read = name => {
+  const raw = storage.getItem(name);
+  if (raw === null) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (name !== key && (!value || value.version !== 1 ||
+        !value.homework || typeof value.homework !== 'object' || Array.isArray(value.homework) ||
+        !value.overrides || typeof value.overrides !== 'object' || Array.isArray(value.overrides))) {
+      throw new Error('Invalid saved snapshot');
+    }
+    return value;
+  }
+  catch {
+    const recovery = `${name}:unreadable:${Date.now()}`;
+    recoveredRaw = raw;
+    if (storage.setItem(recovery, raw)) storage.removeItem(name);
+    storageWarning = 'Unreadable saved data was found. Download the recovery copy in Settings before making more changes.';
+    return null;
+  }
+};
+const saved = read(key) || {};
 const guestKey = `${key}:guest`;
 const deviceKey = `${key}:device`;
-const device = localStorage.getItem(deviceKey) || crypto.randomUUID();
-localStorage.setItem(deviceKey, device);
-let activeKey = guestKey;
-let activeSnapshot = read(guestKey) || fromLegacy(saved, device);
-localStorage.setItem(guestKey, JSON.stringify(activeSnapshot));
+const accountKey = `${key}:account`;
+const userKey = uid => `${key}:user:${uid}`;
+const device = storage.getItem(deviceKey) || crypto.randomUUID();
+storage.setItem(deviceKey, device);
+// A signed-in device opens on that account's offline copy, not an empty guest copy,
+// so the first render, the widget snapshot and widget check-offs use the right data.
+const rememberedUid = cloudConfigured ? storage.getItem(accountKey) : null;
+let activeKey = rememberedUid ? userKey(rememberedUid) : guestKey;
+let activeSnapshot = rememberedUid ? read(activeKey) || emptySnapshot() : read(guestKey) || fromLegacy(saved, device);
+storage.setItem(activeKey, JSON.stringify(activeSnapshot));
 let account = null, syncBusy = false, syncNotice = cloudConfigured ? 'Saved on this device. Sign in to sync.' : 'Google sync needs a Firebase project configuration. Your data stays on this device.';
 let syncError = false, syncing = false, revision = revisionClock(device, activeSnapshot);
+let backupNotice = '', updateReady = false;
 const local = materialize(activeSnapshot);
 const state = {
   date: new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Hong_Kong'}),
@@ -29,8 +76,9 @@ const state = {
   timeMode: local.timeMode,
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set(), homeworkOverlay: false, monthMotion: 0
+  composing: false, expanded: new Set(), draft: null, homeworkOverlay: false, monthMotion: 0
 };
+let followToday = true;
 const app = document.querySelector('#app');
 if (nativeApp) document.documentElement.classList.add('native-app');
 function feedback(kind = 'tap') {
@@ -47,12 +95,15 @@ function showSyncStatus() {
     panel.classList.toggle('error', syncError);
     panel.textContent = syncNotice;
   }
+  const warning = app.querySelector('.storage-indicator');
+  if (warning) { warning.textContent = storageWarning; warning.hidden = !storageWarning; }
 }
 const currentData = () => ({homework:state.homework, overrides:state.overrides, timeMode:state.timeMode});
 function persist() {
   const before = JSON.stringify(activeSnapshot);
   activeSnapshot = captureChanges(activeSnapshot, materialize(activeSnapshot), currentData(), revision);
-  localStorage.setItem(activeKey, JSON.stringify(activeSnapshot));
+  storage.setItem(activeKey, JSON.stringify(activeSnapshot));
+  showSyncStatus();
   refreshWidget(state, today());
   if (account && before !== JSON.stringify(activeSnapshot)) void runSync();
 }
@@ -60,7 +111,8 @@ function applySnapshot(snapshot) {
   activeSnapshot = snapshot;
   revision = revisionClock(device, snapshot);
   Object.assign(state, materialize(snapshot));
-  localStorage.setItem(activeKey, JSON.stringify(snapshot));
+  storage.setItem(activeKey, JSON.stringify(snapshot));
+  showSyncStatus();
   refreshWidget(state, today());
   // Do not erase an in-progress homework form while a background sync finishes.
   if (!document.activeElement?.closest('form')) render();
@@ -77,9 +129,9 @@ async function runSync() {
       if (uid !== account?.uid) return;
       const latest = mergeSnapshots(activeSnapshot, merged);
       applySnapshot(latest);
-      if (localStorage.getItem(guestKey)) {
-        localStorage.removeItem(guestKey);
-        localStorage.removeItem(key);
+      if (storage.getItem(guestKey)) {
+        storage.removeItem(guestKey);
+        storage.removeItem(key);
       }
       if (JSON.stringify(latest) === JSON.stringify(merged)) break;
     } while (account?.uid === uid);
@@ -90,7 +142,8 @@ async function runSync() {
 async function activateAccount(user) {
   if (!user?.uid) return;
   account = user;
-  activeKey = `${key}:user:${user.uid}`;
+  activeKey = userKey(user.uid);
+  storage.setItem(accountKey, user.uid);
   const cached = read(activeKey) || emptySnapshot();
   applySnapshot(mergeSnapshots(cached, read(guestKey) || emptySnapshot()));
   await runSync();
@@ -193,6 +246,7 @@ function changeMonth(direction) {
   const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
   state.date = `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
   state.monthMotion = direction;
+  followToday = state.date === today();
   feedback('selection');
   persist(); render();
 }
@@ -271,7 +325,9 @@ function groupedHomework(items) {
 
 function homeworkView() {
   const editing = state.homework.find(item => item.id === state.editingId);
-  const draft = editing ?? {subject: state.prefillSubject ?? 'ECON', afterDate: state.date > LAST_S6_DAY ? LAST_S6_DAY : state.date, dueMode:'nextLesson', dueDate:'', reminderDays:1, title:'', notes:''};
+  const base = editing ?? {subject: state.prefillSubject ?? 'ECON', afterDate: state.date > LAST_S6_DAY ? LAST_S6_DAY : state.date, dueMode:'nextLesson', dueDate:'', reminderDays:1, title:'', notes:''};
+  // What was typed survives a background sync or clock redraw.
+  const draft = state.draft?.editingId === state.editingId ? {...base, ...state.draft.values} : base;
   const preview = resolveHomework(draft, state.overrides);
   const items = visibleHomework(state.homework, state.overrides, state.filter, state.subjectFilter);
   const open = state.homework.filter(item => !item.done).length;
@@ -320,6 +376,14 @@ function settingsView() {
   const info = dayInfo(state.date, state.overrides);
   return `<header class="hero"><h1 class="display">Settings</h1><p class="sub">Class 6B · ${account ? 'synced with your Google account' : 'data stays on this device'}</p></header>
     ${syncSection()}
+    <section class="block setting">
+      ${label('Data backup')}
+      <p class="hint">Save your homework and timetable changes as a JSON file. Import merges a backup with the data on this device; matching homework from the backup wins.</p>
+      <div class="backup-actions"><button class="button" data-backup="export">Export backup</button><button class="button" data-backup="import">Import backup</button></div>
+      ${recoveredRaw ? '<button class="link" data-backup="recovery">Download unreadable data</button>' : ''}
+      <input id="backup-file" type="file" accept=".json,application/json" hidden>
+      ${backupNotice ? `<p class="hint" role="status">${escapeHTML(backupNotice)}</p>` : ''}
+    </section>
     <section class="block setting">
       ${label('Lesson times')}
       ${toggle('time-mode', [['summer','Summer'],['winter','Winter']], state.timeMode, 'Lesson times')}
@@ -387,7 +451,17 @@ function closeHomeworkOverlay() {
   overlayReturnFocus = null;
 }
 
+// The whole view is redrawn, so find the focused control again by its identifying attributes.
+function focusSelector(element) {
+  if (!element || !app.contains?.(element) || !globalThis.CSS?.escape) return null;
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  const attributes = [...element.attributes].filter(({name}) => name.startsWith('data-') || name === 'name' ||
+    (name === 'value' && element.type === 'radio'));
+  if (!attributes.length) return null;
+  return element.tagName.toLowerCase() + attributes.map(({name, value}) => `[${name}="${CSS.escape(value)}"]`).join('');
+}
 function render() {
+  const focused = focusSelector(globalThis.document?.activeElement);
   const open = state.homework.filter(item => !item.done).length;
   const tab = (view, text) => `<button class="tab ${state.view === view ? 'active' : ''}" data-view="${view}" ${state.view === view ? 'aria-current="page"' : ''}>${text}${view === 'homework' && open ? `<sup>${open}</sup>` : ''}</button>`;
   const body = {today: todayView, calendar: calendarView, homework: homeworkView, settings: settingsView}[state.view]();
@@ -398,8 +472,11 @@ function render() {
     <button class="icon-btn settings-btn ${state.view === 'settings' ? 'active' : ''}" data-view="settings" aria-label="Settings" ${state.view === 'settings' ? 'aria-current="page"' : ''}>${icon('tune')}</button>
   </nav>
   <p class="sync-indicator ${syncError ? 'error' : ''}" role="status">${escapeHTML(syncNotice)}</p>
+  <p class="storage-indicator" role="alert" ${storageWarning ? '' : 'hidden'}>${escapeHTML(storageWarning)}</p>
+  ${updateReady ? '<p class="update-indicator" role="status">An update is ready. <button class="link" data-update>Reload app</button></p>' : ''}
   <main>${body}</main>
 </div>${state.homeworkOverlay ? `<div class="homework-overlay"><button class="overlay-backdrop" data-close-homework tabindex="-1" aria-label="Close homework"></button><section class="homework-dialog" role="dialog" aria-modal="true" aria-label="Homework"><button class="icon-btn overlay-close" data-close-homework aria-label="Close homework">${icon('close')}</button><div class="overlay-content">${homeworkView()}</div></section></div>` : ''}`;
+  if (focused) app.querySelector(focused)?.focus({preventScroll:true});
 }
 
 app.addEventListener('click', event => {
@@ -408,7 +485,7 @@ app.addEventListener('click', event => {
   // A form's submit click must reach its submit event before the DOM is rebuilt.
   if (button.type === 'submit' && button.closest('form')) return;
   if (button.dataset.closeHomework !== undefined) { closeHomeworkOverlay(); return; }
-  const viewBefore = state.view;
+  const viewBefore = state.view, dateBefore = state.date;
   const openOverlay = viewBefore === 'today' && !state.homeworkOverlay && !button.closest('.top') &&
     (button.dataset.compose !== undefined || button.dataset.newSubject || button.dataset.view === 'homework');
   if (openOverlay) {
@@ -425,6 +502,7 @@ app.addEventListener('click', event => {
   if (button.dataset.shift) { state.date = addDays(state.date, Number(button.dataset.shift)); feedback('selection'); }
   if (button.dataset.today !== undefined) state.date = today();
   const compose = button.dataset.compose !== undefined;
+  if (compose || button.dataset.newSubject || button.dataset.edit || button.dataset.cancelEdit !== undefined) state.draft = null;
   if (compose) { if (!openOverlay && !state.homeworkOverlay) state.view = 'homework'; state.editingId = null; state.prefillSubject = null; state.composing = true; }
   if (button.dataset.newSubject) {
     state.prefillSubject = button.dataset.newSubject;
@@ -433,6 +511,7 @@ app.addEventListener('click', event => {
     if (!state.homeworkOverlay) state.view = 'homework';
   }
   if (button.dataset.step) { changeMonth(Number(button.dataset.step)); return; }
+  if (state.date !== dateBefore || button.dataset.today !== undefined) followToday = state.date === today();
   if (button.dataset.toggle) {
     const item = state.homework.find(h => h.id === button.dataset.toggle);
     if (item) { item.done = !item.done; feedback(item.done ? 'success' : 'tap'); }
@@ -451,6 +530,20 @@ app.addEventListener('click', event => {
   }
   if (button.dataset.sync === 'signin') { void signIn(); return; }
   if (button.dataset.sync === 'signout') { void signOut(); return; }
+  if (button.dataset.update !== undefined) { location.reload(); return; }
+  if (button.dataset.backup === 'export') {
+    const url = URL.createObjectURL(new Blob([createBackup(currentData())], {type:'application/json'}));
+    const link = document.createElement('a'); link.href = url; link.download = `timing-backup-${today()}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    backupNotice = 'Backup downloaded.'; render(); return;
+  }
+  if (button.dataset.backup === 'recovery' && recoveredRaw) {
+    const url = URL.createObjectURL(new Blob([recoveredRaw], {type:'text/plain'}));
+    const link = document.createElement('a'); link.href = url; link.download = `timing-recovery-${today()}.txt`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  if (button.dataset.backup === 'import') { app.querySelector('#backup-file')?.click(); return; }
   if (button.dataset.scriptableExport !== undefined) { void copyScriptableSnapshot(); return; }
   if (button.dataset.export !== undefined) {
     const url = URL.createObjectURL(new Blob([calendarICS(state.homework, state.overrides, state.timeMode)], {type:'text/calendar;charset=utf-8'}));
@@ -511,21 +604,44 @@ async function signIn() {
   } catch (error) { syncError = true; syncNotice = error.message; }
   finally { syncBusy = false; render(); }
 }
+function useGuestData() {
+  account = null;
+  storage.removeItem(accountKey);
+  activeKey = guestKey;
+  applySnapshot(read(guestKey) || emptySnapshot());
+}
 async function signOut() {
   try {
     await googleSignOut();
-    account = null;
-    activeKey = guestKey;
-    applySnapshot(read(guestKey) || emptySnapshot());
+    useGuestData();
     syncError = false; syncNotice = 'Signed out. New changes will stay on this device.';
   } catch (error) { syncError = true; syncNotice = error.message; }
   render();
 }
 app.addEventListener('change', event => {
+  if (event.target.id === 'backup-file') {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    void (async () => {
+      try {
+        if (file.size > 5_000_000) throw new Error('The backup is too large to import.');
+        const imported = parseBackup(await file.text());
+        if (!confirm(`Import ${imported.homework.length} homework items and ${Object.keys(imported.overrides).length} day overrides? Matching items from the backup will win.`)) return;
+        Object.assign(state, mergeBackup(currentData(), imported));
+        persist();
+        backupNotice = storageAvailable
+          ? 'Backup imported. Your data is saved on this device and will sync if you are signed in.'
+          : 'Backup imported into this session. Device storage is unavailable; export a fresh backup now.';
+      } catch (error) { backupNotice = error.message; }
+      render();
+    })();
+    return;
+  }
   const control = event.target.id || event.target.name;
   if (control === 'homework-filter') { state.filter = event.target.value; feedback('selection'); render(); return; }
   if (control === 'homework-subject-filter') { state.subjectFilter = event.target.value; feedback('selection'); render(); return; }
-  if (event.target.closest('#homework-form')) { feedback('selection'); updateDraftPreview(); return; }
+  const homeworkForm = event.target.closest('#homework-form');
+  if (homeworkForm) { feedback('selection'); saveDraft(homeworkForm); updateDraftPreview(); return; }
   // Only settings controls re-render; typing in a step field must not replace its form mid-submit.
   if (!['time-mode', 'day-type', 'cycle-type'].includes(control)) return;
   if (control === 'time-mode') state.timeMode = event.target.value;
@@ -543,8 +659,12 @@ app.addEventListener('change', event => {
   }
   feedback('selection'); persist(); render();
 });
+function saveDraft(form) {
+  state.draft = {editingId: state.editingId, values: Object.fromEntries(new FormData(form))};
+}
 app.addEventListener('input', event => {
-  if (event.target.closest('#homework-form')) updateDraftPreview();
+  const form = event.target.closest('#homework-form');
+  if (form) { saveDraft(form); updateDraftPreview(); }
 });
 function updateDraftPreview() {
   const form = app.querySelector('#homework-form');
@@ -584,6 +704,7 @@ app.addEventListener('submit', event => {
     state.prefillSubject = null;
     state.composing = false;
     feedback('success');
+    state.draft = null;
     persist(); render();
   } catch (error) {
     const message = app.querySelector('#form-error');
@@ -600,31 +721,52 @@ async function collectWidgetCompletions() {
   else refreshWidget(state, today());
 }
 void collectWidgetCompletions();
-document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') void collectWidgetCompletions(); });
+document.addEventListener?.('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { void collectWidgetCompletions(); refreshClock(); }
+});
 onWidgetOpen(target => {
   state.view = target.view;
   state.homeworkOverlay = false;
-  if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; }
+  state.homeworkOverlay = false;
+  if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; state.draft = null; }
   if (target.id) { state.filter = 'open'; state.subjectFilter = 'all'; state.expanded.add(target.id); }
   render();
   if (target.id) app.querySelector(`[data-id="${CSS.escape(target.id)}"]`)?.scrollIntoView({block:'center'});
   if (target.compose) app.querySelector('#homework-form input[name="title"]')?.focus();
 });
 // Keep the "now" lesson current without disturbing a form that is being filled in.
-const clock = setInterval(() => {
+function refreshClock() {
+  if (followToday && state.date !== today()) state.date = today();
   const active = globalThis.document?.activeElement;
   if (state.view === 'today' && !state.homeworkOverlay && !(active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName))) render();
-}, 60000);
+}
+const clock = setInterval(refreshClock, 60000);
 clock?.unref?.();
 
 /* ---------- Sync ---------- */
 
 if (cloudConfigured) {
-  void currentAccount().then(user => user && activateAccount(user)).catch(error => {
+  void currentAccount().then(user => {
+    if (user) return activateAccount(user);
+    // The session ended elsewhere: its offline copy stays saved for the next sign-in.
+    if (rememberedUid) { useGuestData(); syncNotice = 'Signed out. Sign in again to sync.'; render(); }
+  }).catch(error => {
     syncError = true; syncNotice = `${error.message} Local data is available.`; render();
   });
   window.addEventListener('online', () => { if (account) void runSync(); });
   window.addEventListener('focus', () => { if (account) void runSync(); });
   setInterval(() => { if (account && document.visibilityState === 'visible') void runSync(); }, 30_000);
 }
-if (globalThis.navigator && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+const hostedWeb = !nativeApp && /^https?:$/.test(globalThis.location?.protocol ?? '');
+if (globalThis.navigator && 'serviceWorker' in navigator && !hostedWeb) {
+  // Remove a worker registered by an earlier packaged version.
+  navigator.serviceWorker.getRegistrations().then(list => list.forEach(registration => registration.unregister())).catch(() => {});
+} else if (globalThis.navigator && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'TIMING_UPDATE_READY') {
+      updateReady = true;
+      if (!document.activeElement?.closest('form')) render();
+    }
+  });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
