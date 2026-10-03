@@ -80,6 +80,41 @@ Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons
 
 **Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps the selected date and uses the first lesson of that subject on that day, including its period and start time in the calendar export. If no confirmed subject lesson exists that day, the date stays fixed with a 5:00 PM fallback. Timetable overrides update the period without moving the date. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
 
+### Natural-language creation and shared action
+
+Homework has **Add in your own words**, which accepts requests such as:
+
+- “Add Economics homework: finish questions 1–15, due Monday at 4 PM.”
+- “Add ICT homework: finish the database worksheet, due next lesson.”
+- “Finish the worksheet for Economics, due tomorrow.”
+
+The built-in English parser supports subject names, codes and X1/X2/X3, dates in `YYYY-MM-DD` format, today, tomorrow, bare weekdays, and next lesson. A bare weekday means its next occurrence strictly after today. Relative dates and explicit times use **Asia/Hong_Kong**, independent of the device's timezone. The assigned date defaults to today, not the day selected in the calendar. Ambiguous dates, unknown subjects and incomplete requests produce an error without saving. If no next lesson is confirmed before S6 ends, choose a specific date.
+
+The optional due-time field on a specific-date assignment overrides the lesson's clock time, and survives edits, backups and sync. Calendar exports, the homework list and widgets use that time. Without it, the original first-subject-lesson/5:00 PM rule applies. Next-lesson assignments continue to store a rule and follow timetable changes.
+
+`src/homework-action.js` exports the transport-independent `createHomework(request, context)` and `createHomeworkAction` tool name, description and JSON input schema. Any general assistant can supply ordinary structured arguments; no Timing-specific AI agent, model or special system prompt is needed:
+
+```js
+// Inside Timing: this bound action also persists, syncs and refreshes widgets.
+import { createHomework } from './src/main.js';
+
+createHomework({
+  subject: 'Economics',
+  title: 'Finish questions 1–15', // description is an alternative to title
+  dueDate: 'Monday',
+  dueTime: '4 PM',
+  notes: 'Show your working'
+});
+createHomework({subject:'ICT', description:'Finish the database worksheet', dueMode:'nextLesson'});
+createHomework({text:'Add ICT homework: finish the database worksheet, due next lesson'});
+```
+
+Use either `text` (with optional `notes` and `reminderDays`) or structured fields. Structured fields accept optional `afterDate` and `reminderDays`, a date with `at 4 PM` or a local `YYYY-MM-DDTHH:mm`, or separate `dueDate` and `dueTime`. `dueTime` cannot accompany next lesson. Both new form submissions and natural-language submissions use the same action and existing `normalizeHomework` / `resolveHomework` logic; edits keep their original ID and progress.
+
+The result is `{created, homework, dueTime, timeZone}`; Timing's bound action also returns `savedLocally`. Identical subject, normalized title, notes and resolved deadline return `created:false` with the saved ID, including completed assignments, without resetting progress or creating a sync revision. Changing notes or the deadline creates a distinct assignment. This guards retries against the current user's state; it is not a distributed uniqueness guarantee across simultaneous offline devices.
+
+For future MCP/plugin, Android AppFunctions or voice adapters, call the bound action in the active app, or call the transport-independent action with `{homework, overrides, timeMode, now}` from the authenticated user's current data. The latter prepares a detached result without writing; when `created:true`, strip computed `homework.due` and persist the remaining item through the existing storage/sync pipeline. `HomeworkRequestError` supplies a stable `code` and user-facing message. Authenticate and serialize writes against that user's latest state in any server adapter; never select an account from homework arguments. This change provides the shared action and schema, **not a hosted HTTP or MCP endpoint**. Ordinary ChatGPT will need an installed connector exposing this action before it can write remotely.
+
 Source: user-supplied school calendar screenshots and 6B class timetable. Verify transcribed exceptions with the school before using them for critical deadlines.
 
 ## Sync

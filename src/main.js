@@ -1,5 +1,6 @@
 import { addDays, dayInfo, lessonsOn, LAST_S6_DAY, periodTimes, resolveHomework, subjects } from './schedule.js';
-import { homeworkStatus, homeworkSubjects, normalizeHomework, reminderDays, visibleHomework } from './homework.js';
+import { homeworkDueTime, homeworkStatus, homeworkSubjects, normalizeHomework, reminderDays, visibleHomework } from './homework.js';
+import { createHomework as prepareHomework, createHomeworkAction } from './homework-action.js';
 import { calendarICS } from './calendar-export.js';
 import { icon } from './icons.js';
 import { cloudConfigured, currentAccount, googleSignIn, googleSignOut, nativeApp, syncAccount } from './cloud.js';
@@ -76,7 +77,8 @@ const state = {
   timeMode: local.timeMode,
   view: views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set(), draft: null, homeworkOverlay: false, monthMotion: 0
+  composing: false, expanded: new Set(), draft: null, homeworkOverlay: false, monthMotion: 0,
+  homeworkRequest: '', homeworkRequestNotice: ''
 };
 let followToday = true;
 const app = document.querySelector('#app');
@@ -106,6 +108,19 @@ function persist() {
   showSyncStatus();
   refreshWidget(state, today());
   if (account && before !== JSON.stringify(activeSnapshot)) void runSync();
+}
+// Single app action for forms and future authenticated MCP/AppFunctions/voice
+// adapters. Use the active account's existing sync, storage and widget pipeline.
+export { createHomeworkAction };
+export function createHomework(request) {
+  const result = prepareHomework(request, currentData());
+  if (result.created) {
+    const {due, ...item} = result.homework; // Save the rule, not its computed lesson.
+    state.homework.push(item);
+    persist();
+    if (!document.activeElement?.closest('form')) render();
+  }
+  return {...result, savedLocally:storageAvailable};
 }
 function applySnapshot(snapshot) {
   activeSnapshot = snapshot;
@@ -158,8 +173,8 @@ const minutes = time => { const [hours, mins] = time.split(':').map(Number); ret
 const nowMinutes = () => minutes(new Intl.DateTimeFormat('en-GB', {hour:'2-digit', minute:'2-digit', hourCycle:'h23', timeZone:'Asia/Hong_Kong'}).format(new Date()));
 const options = (list, selected) => list.map(([value, text]) => `<option value="${escapeHTML(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${escapeHTML(text)}</option>`).join('');
 const subjectOptions = selected => options(homeworkSubjects.map(code => [code, labelSubject(code)]), selected);
-const dueText = item => !item.due ? 'no confirmed lesson yet' : item.due.period
-  ? `${short(item.due.date)} · P${item.due.period}` : `${short(item.due.date)} · 17:00`;
+const dueText = item => !item.due ? 'no confirmed lesson yet' : item.due.period && !item.dueTime
+  ? `${short(item.due.date)} · P${item.due.period}` : `${short(item.due.date)} · ${homeworkDueTime(item, state.timeMode)}`;
 const statusLabels = {overdue:'Overdue', today:'Due today', upcoming:'Coming up', unconfirmed:'Unconfirmed', completed:'Completed'};
 const dayNames = {regular:'Normal timetable', special:'Special timetable', exam:'Examinations', holiday:'No school', off:'No lessons', opening:'Opening ceremony', finished:'S6 finished', outside:'Before term'};
 
@@ -287,9 +302,10 @@ function calendarView() {
 function duePreview(item) {
   if (!item.due) return `<span class="warn">No confirmed lesson before S6 ends.</span>`;
   const when = format(item.due.date, {weekday:'long', day:'numeric', month:'short'});
+  if (item.dueTime) return `Due <strong>${when}</strong> · <span class="mono">${escapeHTML(item.dueTime)}</span><br><small>Fixed date and time (Hong Kong).</small>`;
   return item.due.period
     ? `Due <strong>${when}</strong> · <span class="mono">Day ${escapeHTML(item.due.cycle)} · P${item.due.period}</span><br><small>${item.dueMode === 'date' ? 'The date stays fixed; the period follows the first subject lesson that day.' : 'Moves automatically if that school day changes.'}</small>`
-    : `Due <strong>${when}</strong> · <span class="mono">17:00</span><br><small>Fixed date, not tied to a lesson.</small>`;
+    : `Due <strong>${when}</strong> · <span class="mono">${homeworkDueTime(item, state.timeMode)}</span><br><small>Fixed date, not tied to a lesson.</small>`;
 }
 
 function homeworkItem(item) {
@@ -337,6 +353,12 @@ function homeworkView() {
       <p class="sub">${open ? `<strong class="count">${open}</strong> open` : 'All caught up'} · due dates follow your lessons</p>
     </header>
     <section class="block" id="homework-section">
+      ${!editing ? `<form id="homework-request-form" class="form">
+        <label class="field"><span>Add in your own words</span><textarea name="text" rows="2" maxlength="2000" required placeholder="Add ICT homework: finish the database worksheet, due next lesson">${escapeHTML(state.homeworkRequest)}</textarea></label>
+        <p class="hint">Use a subject and description, followed by due next lesson, a weekday, today, tomorrow, or YYYY-MM-DD. Times use Hong Kong time.</p>
+        <button class="button" type="submit">Add homework</button>
+        <p id="homework-request-notice" role="status" ${state.homeworkRequestNotice ? '' : 'hidden'}>${escapeHTML(state.homeworkRequestNotice)}</p>
+      </form>` : ''}
       <details class="composer" ${composerOpen ? 'open' : ''}><summary class="button">${editing ? 'Editing homework' : '+ Add homework'}</summary>
       <form id="homework-form" class="form"><h2 class="sr-only">${editing ? 'Edit homework' : 'Add homework'}</h2>
         <input class="title-input" name="title" maxlength="160" value="${escapeHTML(draft.title)}" placeholder="What to hand in" aria-label="What to hand in" required>
@@ -346,6 +368,7 @@ function homeworkView() {
         </div>
         <div class="field"><span>Due</span>${toggle('dueMode', [['nextLesson','Next lesson'],['date','Specific date']], draft.dueMode === 'date' ? 'date' : 'nextLesson', 'Due rule')}</div>
         <label class="field" id="manual-date-field" ${draft.dueMode !== 'date' ? 'hidden' : ''}><span>Due date</span><input type="date" name="dueDate" value="${escapeHTML(draft.dueDate || draft.afterDate)}" min="${escapeHTML(draft.afterDate)}"></label>
+        <label class="field" id="manual-time-field" ${draft.dueMode !== 'date' ? 'hidden' : ''}><span>Due time (optional, Hong Kong)</span><input type="time" name="dueTime" value="${escapeHTML(draft.dueTime || '')}"></label>
         <p id="due-preview" class="due-preview" role="status">${duePreview(preview)}</p>
         <details class="extra" ${draft.notes || Number(draft.reminderDays ?? 1) !== 1 ? 'open' : ''}><summary>Reminder &amp; notes</summary>
           <label class="field"><span>Calendar reminder</span><select name="reminderDays">${options(reminderDays.map(days => [days, days === 0 ? 'At due time' : `${days} day${days === 1 ? '' : 's'} before`]), Number(draft.reminderDays ?? 1))}</select></label>
@@ -663,6 +686,7 @@ function saveDraft(form) {
   state.draft = {editingId: state.editingId, values: Object.fromEntries(new FormData(form))};
 }
 app.addEventListener('input', event => {
+  if (event.target.closest('#homework-request-form')) { state.homeworkRequest = event.target.value; return; }
   const form = event.target.closest('#homework-form');
   if (form) { saveDraft(form); updateDraftPreview(); }
 });
@@ -672,12 +696,29 @@ function updateDraftPreview() {
   const data = new FormData(form);
   const manual = data.get('dueMode') === 'date';
   form.querySelector('#manual-date-field').hidden = !manual;
+  form.querySelector('#manual-time-field').hidden = !manual;
   const dueInput = form.querySelector('[name="dueDate"]');
   dueInput.min = String(data.get('afterDate'));
-  const draft = { subject:String(data.get('subject')), afterDate:String(data.get('afterDate')), dueMode:String(data.get('dueMode')), dueDate:String(data.get('dueDate')) };
+  const draft = { subject:String(data.get('subject')), afterDate:String(data.get('afterDate')), dueMode:String(data.get('dueMode')), dueDate:String(data.get('dueDate')), dueTime:manual ? String(data.get('dueTime') ?? '') : '' };
   form.querySelector('#due-preview').innerHTML = duePreview(resolveHomework(draft, state.overrides));
 }
 app.addEventListener('submit', event => {
+  if (event.target.id === 'homework-request-form') {
+    event.preventDefault();
+    const text = new FormData(event.target).get('text');
+    try {
+      const result = createHomework({text});
+      state.homeworkRequest = '';
+      state.homeworkRequestNotice = `${result.created ? 'Added' : 'Already saved'}: ${result.homework.title} · ${dueText(result.homework)}`;
+      feedback('success'); render();
+    } catch (error) {
+      state.homeworkRequest = text;
+      state.homeworkRequestNotice = error.message;
+      const message = app.querySelector('#homework-request-notice');
+      message.textContent = error.message; message.hidden = false;
+    }
+    return;
+  }
   if (event.target.matches('.step-form')) {
     event.preventDefault();
     const task = state.homework.find(h => h.id === event.target.dataset.taskId);
@@ -695,11 +736,13 @@ app.addEventListener('submit', event => {
   if (event.target.id !== 'homework-form') return;
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target));
+  if (data.dueMode === 'nextLesson') { data.dueDate = ''; data.dueTime = ''; }
   try {
     const existing = state.homework.find(h => h.id === state.editingId);
-    const item = normalizeHomework(data, existing);
-    if (existing) state.homework = state.homework.map(h => h.id === existing.id ? item : h);
-    else state.homework.push(item);
+    if (existing) {
+      const item = normalizeHomework(data, existing);
+      state.homework = state.homework.map(h => h.id === existing.id ? item : h);
+    } else createHomework(data);
     state.editingId = null;
     state.prefillSubject = null;
     state.composing = false;

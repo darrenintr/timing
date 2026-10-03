@@ -1,4 +1,5 @@
 import { addDays, FIRST_DAY, LAST_S6_DAY, lessonsOn, periodTimes, resolveHomework, subjects } from './schedule.js';
+import { homeworkDueTime } from './homework.js';
 
 const escapeText = value => String(value ?? '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 const stamp = date => date.replaceAll('-', '');
@@ -22,14 +23,16 @@ export function calendarICS(homework, overrides, timeMode, generatedAt = new Dat
   for (const item of homework.map(entry => resolveHomework(entry, overrides))) {
     if (!item.due || item.done) continue;
     const date = item.due.date;
-    const start = item.due.period ? periodTimes[timeMode][item.due.period - 1][0] : '17:00';
+    const start = homeworkDueTime(item, timeMode);
     const [hour, minute] = start.split(':').map(Number);
-    const end = `${String(hour + Math.floor((minute + 15) / 60)).padStart(2, '0')}${String((minute + 15) % 60).padStart(2, '0')}`;
+    const endMinutes = hour * 60 + minute + 15;
+    const endDate = endMinutes >= 1440 ? addDays(date, 1) : date;
+    const end = `${String(Math.floor(endMinutes / 60) % 24).padStart(2, '0')}${String(endMinutes % 60).padStart(2, '0')}`;
     const reminder = Number(item.reminderDays ?? 1);
     events.push(event([
       `UID:homework-${item.id}@timing.local`, `DTSTAMP:${created}`,
       `DTSTART;TZID=Asia/Hong_Kong:${stamp(date)}T${start.replace(':', '')}00`,
-      `DTEND;TZID=Asia/Hong_Kong:${stamp(date)}T${end}00`,
+      `DTEND;TZID=Asia/Hong_Kong:${stamp(endDate)}T${end}00`,
       `SUMMARY:${escapeText(`${subjects[item.subject]?.[0] ?? item.subject} homework: ${item.title}`)}`,
       `DESCRIPTION:${escapeText(item.notes || (item.due.period ? `Due at period ${item.due.period}` : 'Due on selected date'))}`,
       'BEGIN:VALARM', 'ACTION:DISPLAY',

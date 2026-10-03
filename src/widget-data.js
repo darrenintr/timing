@@ -1,4 +1,5 @@
 import { addDays, dayInfo, LAST_S6_DAY, lessonsOn, periodTimes, resolveHomework, subjects } from './schedule.js';
+import { homeworkDueTime } from './homework.js';
 
 // Store enough future days that native widgets can advance at midnight and at
 // every period boundary even if the web view has not been opened. All dates and
@@ -24,12 +25,13 @@ export function widgetData(state, fromDate) {
     });
   }
   const homework = state.homework.filter(item => !item.done).map(item => {
-    const due = resolveHomework(item, state.overrides).due;
+    const resolved = resolveHomework(item, state.overrides);
+    const due = resolved.due;
     const steps = Array.isArray(item.steps) ? item.steps : [];
     return {
       id: item.id ?? null, title: item.title, subject: subjects[item.subject]?.[0] ?? item.subject,
       code: item.subject, date: due?.date ?? null, period: due?.period ?? null,
-      time: due?.period ? times[due.period - 1]?.[0] ?? null : null,
+      time: homeworkDueTime(resolved, state.timeMode),
       stepsDone: steps.filter(step => step.done).length, stepsTotal: steps.length
     };
   }).sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') ||
