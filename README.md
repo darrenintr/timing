@@ -74,9 +74,13 @@ If a native project file is missing while the Web config is supplied, its CI job
 - Winter and summer lesson times can be selected manually because the supplied timetable does not give the changeover date.
 - Data is kept locally and, when a Firebase project is configured and you sign in, in your account's Firestore document. Settings can export or import a JSON backup of homework and timetable changes. Import merges with the current data, with matching items from the backup winning. Exporting `.ics` is a one-time calendar import; it does not update earlier imports automatically. Notifications and live Google/Apple Calendar synchronization are future platform integrations.
 
+## Navigation
+
+Phones get a bottom dock (Today, Calendar, Homework, Settings); wider screens keep the tabs in the floating top bar. Today has a week strip for jumping to any day, and swiping across the lessons moves a day (swiping the calendar moves a month). Each tab is a `#hash`, so the browser or Android back button returns to Today and closes the homework sheet. On a keyboard, ←/→ change day or month, T jumps to today and 1–4 switch tabs. Transitions respect the system's reduced-motion setting.
+
 ## Homework
 
-Open the **Homework** tab in the top bar, or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
+Open the **Homework** tab (top bar on wide screens, bottom dock on phones), or use **+ Add** under Today's lessons. A lesson row also has a small subject-specific **+** button. Each assignment can be edited, marked complete, removed, given notes, and broken into smaller steps.
 
 **Next lesson** stores the subject and assigned date as a rule. Cancelling or rescheduling a school day recalculates the due lesson. **Specific date** keeps the selected date and uses the first lesson of that subject on that day, including its period and start time in the calendar export. If no confirmed subject lesson exists that day, the date stays fixed with a 5:00 PM fallback. Timetable overrides update the period without moving the date. Due states show today, overdue, unconfirmed, and completed. Calendar export includes alarms at the selected reminder offset; export again after a timetable change. The app itself does not yet send reliable background notifications.
 
