@@ -56,11 +56,6 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .brand{display:flex;align-items:center;gap:8px;margin-right:auto}
 .brand img{border-radius:7px}
 .brand span{font-family:var(--serif);font-style:italic;font-size:21px;font-weight:500;letter-spacing:-.01em}
-.tabs{display:flex;gap:2px}
-.tab{position:relative;padding:8px 12px;border-radius:999px;font-size:14px;font-weight:450;color:var(--ink-3);transition:color .15s,background .15s}
-.tab:hover{color:var(--ink)}
-.tab.active{color:var(--ink);font-weight:700;background:var(--wash)}
-.tab sup{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--warm);margin-left:2px}
 .icon-btn{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:999px;color:var(--ink-2);transition:background .15s}
 .icon-btn:hover,.icon-btn.active{background:var(--wash);color:var(--ink)}
 .icon-btn.tiny{width:28px;height:28px}
@@ -212,7 +207,6 @@ em.overdue{color:var(--danger)}em.today{color:var(--warm)}em.unconfirmed{color:v
 .day.special .letter,.day.exam .letter,.day.opening .letter{color:var(--warm)}
 .day.flag::after{content:'';position:absolute;top:7px;right:9px;width:5px;height:5px;border-radius:50%;background:var(--warm)}
 .day.is-today .num{font-weight:800;color:var(--accent)}
-.day.selected{background:var(--ink)}
 .day.selected .num,.day.selected .letter{color:var(--paper)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:16px 0 0;font-size:12px;color:var(--ink-3)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -236,8 +230,6 @@ em.overdue{color:var(--danger)}em.today{color:var(--warm)}em.unconfirmed{color:v
 /* ---------- Narrow phones ---------- */
 @media (max-width:480px){
   .shell{padding:0 16px calc(48px + env(safe-area-inset-bottom))}
-  .brand span{display:none}
-  .tab{padding:8px 10px}
   .hero{padding-top:28px}
   .lesson{grid-template-columns:52px 1fr auto;gap:10px}
   .break{padding-left:62px}
@@ -273,9 +265,6 @@ html,body{background:
 @media(display-mode:standalone){.top::before{top:calc(6px + max(24px, env(safe-area-inset-top, 0px)))}}
 .brand{padding-left:6px}
 .brand img{box-shadow:0 2px 6px -1px rgba(0,0,0,.25)}
-.tabs{padding:3px;border-radius:999px;background:var(--wash)}
-.tab{padding:7px 12px}
-.tab.active{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08),0 2px 8px -2px rgba(0,0,0,.12)}
 .icon-btn:hover,.icon-btn.active{background:var(--wash)}
 .sync-indicator{padding:0 4px}
 
@@ -319,7 +308,6 @@ html,body{background:
 .day.off,.day.holiday,.day.finished,.day.outside{background:transparent}
 .day:hover{background:var(--wash)}
 .day.is-today:not(.selected){box-shadow:inset 0 0 0 1.5px var(--accent)}
-.day.selected{background:var(--ink);box-shadow:0 8px 18px -8px rgba(0,0,0,.55);transform:translateY(-1px)}
 .picked{border-top:0;margin-top:16px;padding-bottom:20px}
 
 /* Settings */
@@ -335,30 +323,202 @@ html,body{background:
 .day.flag::after{top:6px;right:6px}
 #homework-section:not(:has(.composer[open])){padding:0;background:none;border:0;box-shadow:none}
 .plain-select{margin-left:auto}
-.tab,.button,.due-row,.icon-btn,.add-inline,.check{transition:background .15s,color .15s,transform .16s var(--ease)}
-.tab:active,.button:active,.due-row:active,.icon-btn:active,.add-inline:active,.check:active{transform:scale(.96)}
 
 /* Swipe leaves vertical scrolling and date taps intact. */
 .calendar-swipe{touch-action:pan-y;overscroll-behavior-x:contain}
-.month-enter-next{animation:month-from-right .22s var(--ease) both}
-.month-enter-previous{animation:month-from-left .22s var(--ease) both}
-@keyframes month-from-right{from{opacity:.55;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-@keyframes month-from-left{from{opacity:.55;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
 
 /* Homework opened from Today floats over the current day. */
 body:has(.homework-overlay){overflow:hidden}
 .homework-overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px}
 .overlay-backdrop{position:absolute;inset:0;width:100%;height:100%;background:rgba(14,20,18,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
-.homework-dialog{position:relative;width:min(100%,620px);max-height:min(88dvh,850px);overflow:hidden;border:1px solid var(--line);border-radius:28px;background:var(--paper);box-shadow:var(--shadow-float);animation:overlay-in .24s var(--ease) both}
+.homework-dialog{position:relative;width:min(100%,620px);max-height:min(88dvh,850px);overflow:hidden;border:1px solid var(--line);border-radius:28px;background:var(--paper);box-shadow:var(--shadow-float)}
 .overlay-content{max-height:inherit;overflow-y:auto;overscroll-behavior:contain;padding:0 24px 28px}
 .overlay-content .hero{padding-top:28px;padding-right:44px}
 .overlay-content .display{font-size:clamp(38px,9vw,54px)}
 .overlay-close{position:absolute;right:18px;top:20px;z-index:1;background:var(--surface);box-shadow:var(--shadow-1)}
-@keyframes overlay-in{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:600px){
   .homework-overlay{align-items:end;padding:0}
   .homework-dialog{width:100%;max-height:88dvh;border-radius:26px 26px 0 0;border-bottom:0}
   .overlay-content{padding:0 16px calc(16px + env(safe-area-inset-bottom))}
   .overlay-close{right:14px;top:18px}
 }
-@media(prefers-reduced-motion:reduce){.month-enter-next,.month-enter-previous,.homework-dialog{animation:none}}
+
+/* ---------- Navigation ----------
+   Wide screens: a segmented control in the floating top bar.
+   Phones: a thumb-reach dock at the bottom with icons, labels and the open-homework badge.
+   The active pill is one element that glides between tabs (see measureFlip in main.js). */
+.tabs{position:relative;isolation:isolate;display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--wash)}
+.tab{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 12px;border-radius:999px;font-size:14px;font-weight:450;color:var(--ink-3)}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--ink);font-weight:700}
+.tab-pill{position:absolute;z-index:0;inset:0;border-radius:inherit;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08),0 2px 8px -2px rgba(0,0,0,.12)}
+.tab-icon,.tab-label,.tab-badge{position:relative;z-index:1}
+.tab-icon{display:none;place-items:center}
+.tab-icon .icon{transition:transform .3s var(--spring)}
+.tab-settings{padding:7px 9px}
+.tab-settings .tab-icon{display:grid}
+.tab-settings .tab-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.tab-badge{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--warm);margin-left:-3px;align-self:flex-start;line-height:1}
+
+@media (max-width:600px){
+  .shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+  .top{position:relative;margin:0;padding-left:0;padding-right:0}
+  .top::before{display:none}
+  .brand span{display:inline}
+  .tabs{position:fixed;z-index:10;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:480px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;border-radius:26px;
+    background:color-mix(in srgb,var(--surface) 84%,transparent);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);
+    border:1px solid color-mix(in srgb,var(--line) 70%,transparent);box-shadow:var(--shadow-float),inset 0 1px 0 var(--rim)}
+  .tab,.tab-settings{flex-direction:column;gap:3px;padding:7px 0 6px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.01em}
+  .tab-icon{display:grid}
+  .tab-icon .icon{width:22px;height:22px}
+  .tab.active{color:var(--accent);font-weight:750}
+  .tab.active .tab-icon .icon{transform:translateY(-1px) scale(1.06)}
+  .tab-pill{background:var(--accent-wash);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 14%,transparent)}
+  .tab-settings .tab-label{position:relative;width:auto;height:auto;overflow:visible;clip:auto}
+  .tab-badge{position:absolute;top:4px;left:calc(50% + 7px);margin:0;padding:2px 5px;border-radius:999px;background:var(--warm);color:var(--surface);font-size:9px;font-weight:700;box-shadow:0 0 0 2px var(--surface)}
+  .sync-indicator{margin-top:4px}
+}
+@media (prefers-reduced-transparency:reduce){.tabs{background:var(--surface);backdrop-filter:none}}
+
+/* ---------- Week strip ---------- */
+.week{position:relative;isolation:isolate;display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:18px 0 0;padding:4px;border-radius:20px;
+  background:var(--surface);border:1px solid color-mix(in srgb,var(--line) 75%,transparent);box-shadow:var(--shadow-1),inset 0 1px 0 var(--rim)}
+.wk-day{position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 0 6px;border-radius:15px;min-width:0}
+.wk-day:hover:not(.selected){background:var(--wash)}
+.wk-day>span{position:relative;z-index:1}
+.wk-name{font-size:10px;font-weight:750;letter-spacing:.08em;color:var(--ink-3)}
+.wk-num{font-size:16px;font-weight:550;font-variant-numeric:tabular-nums;color:var(--ink)}
+.wk-letter{height:13px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--accent)}
+.wk-day:is(.off,.holiday,.finished,.outside) .wk-num{color:var(--ink-3);font-weight:450}
+.wk-day:is(.off,.holiday,.finished,.outside) .wk-letter{color:var(--ink-3)}
+.wk-day:is(.special,.exam,.opening) .wk-letter{color:var(--warm)}
+.wk-day.is-today:not(.selected) .wk-num{color:var(--accent);font-weight:800}
+.wk-day.is-today:not(.selected)::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.wk-pill{position:absolute;z-index:0;inset:0;border-radius:inherit;background:var(--ink);box-shadow:0 8px 18px -8px rgba(0,0,0,.55)}
+.week .wk-day.selected>span{color:var(--paper)}
+
+/* Calendar selection is one pill that glides between dates. */
+.month{isolation:isolate}
+.day.selected{background:transparent;box-shadow:none}
+.day-pill{position:absolute;z-index:1;inset:0;border-radius:inherit;background:var(--ink);box-shadow:0 8px 18px -8px rgba(0,0,0,.55)}
+.day .num,.day .letter{position:relative;z-index:2}
+.stepper{align-items:center}
+
+/* ---------- Motion ----------
+   Every transition is one-shot: main.js adds .enter-* for the render that changes something,
+   so the minute clock and background sync redraw without replaying anything. */
+:root{--spring:cubic-bezier(.34,1.36,.5,1);--out:cubic-bezier(.16,1,.3,1)}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}}
+@keyframes rise-sm{from{opacity:0;transform:translateY(8px)}}
+@keyframes in-right{from{opacity:0;transform:translateX(32px)}}
+@keyframes in-left{from{opacity:0;transform:translateX(-32px)}}
+@keyframes in-right-sm{from{opacity:0;transform:translateX(14px)}}
+@keyframes in-left-sm{from{opacity:0;transform:translateX(-14px)}}
+@keyframes fade{from{opacity:0}}
+@keyframes fade-out{to{opacity:0}}
+@keyframes tile{from{opacity:0;transform:scale(.82)}}
+@keyframes pop{0%{transform:scale(.7)}55%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes grow{from{width:0}}
+@keyframes to-paper{from{color:var(--ink)}}
+@keyframes flash{from{background:color-mix(in srgb,var(--accent-wash) 90%,transparent)}}
+@keyframes live{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%,100%{box-shadow:0 0 0 7px transparent}}
+@keyframes dock-in{from{opacity:0;transform:translateY(calc(100% + 24px))}}
+@keyframes sheet-in{from{opacity:0;transform:translateY(28px) scale(.96)}}
+@keyframes sheet-out{to{opacity:0;transform:translateY(20px) scale(.97)}}
+@keyframes sheet-up{from{transform:translateY(100%)}}
+@keyframes sheet-down{to{transform:translateY(100%)}}
+@keyframes leave-row{0%,40%{max-height:180px;opacity:1;transform:none}100%{max-height:0;padding-top:0;padding-bottom:0;opacity:0;transform:translateX(28px);border-bottom-color:transparent}}
+
+/* First paint: the page settles in and the dock slides up. */
+.booting .top{animation:fade .5s var(--out) both}
+.booting .sync-indicator{animation:fade .6s var(--out) .25s both}
+
+/* View changes: sections rise in sequence, sliding toward the tab you moved to. */
+.enter>*{animation:rise .5s var(--out) both}
+.enter-forward>*{animation-name:in-right}
+.enter-back>*{animation-name:in-left}
+.enter>:nth-child(2){animation-delay:.05s}
+.enter>:nth-child(3){animation-delay:.1s}
+.enter>:nth-child(4){animation-delay:.15s}
+.enter>:nth-child(5){animation-delay:.2s}
+.enter>:nth-child(n+6){animation-delay:.25s}
+:is(.enter-boot,.enter-forward,.enter-back) :is(.lessons>li,.due-list>li,.tasks>.task){animation:rise-sm .45s var(--out) both;animation-delay:calc(.14s + var(--i,0) * 40ms)}
+:is(.enter-boot,.enter-forward,.enter-back) .wk-day{animation:rise-sm .4s var(--out) both;animation-delay:calc(.06s + var(--i,0) * 28ms)}
+:is(.enter-boot,.enter-forward,.enter-back) .month .day{animation:tile .42s var(--out) both;animation-delay:calc(.08s + var(--i,0) * 7ms)}
+.enter .lesson.now .bar i{animation:grow 1s var(--out) .3s both}
+
+/* Day changes on Today: the day's content slides in from the side you swiped toward. */
+:is(.enter-day-next,.enter-day-prev,.enter-month-next,.enter-month-prev,.enter-pick)>*{animation:none}
+.enter-day-next :is(.display,.sub,.cycle,.notice,.day-swipe){animation:in-right .42s var(--out) both}
+.enter-day-prev :is(.display,.sub,.cycle,.notice,.day-swipe){animation:in-left .42s var(--out) both}
+.enter-day-next .lessons>li{animation:in-right-sm .45s var(--out) both;animation-delay:calc(.06s + var(--i,0) * 30ms)}
+.enter-day-prev .lessons>li{animation:in-left-sm .45s var(--out) both;animation-delay:calc(.06s + var(--i,0) * 30ms)}
+.enter-day-next.enter-week-change .week{animation:in-right .42s var(--out) both}
+.enter-day-prev.enter-week-change .week{animation:in-left .42s var(--out) both}
+:is(.enter-day-next,.enter-day-prev,.enter-pick) :is(.wk-day,.day).selected>span{animation:to-paper .35s var(--out) both}
+
+/* Month changes: the title slides and the dates ripple in. */
+.enter-month-next .display{animation:in-right .4s var(--out) both}
+.enter-month-prev .display{animation:in-left .4s var(--out) both}
+:is(.enter-month-next,.enter-month-prev) .month .day{animation:tile .38s var(--out) both;animation-delay:calc(var(--i,0) * 6ms)}
+:is(.enter-month-next,.enter-month-prev,.enter-pick) .picked>*{animation:rise-sm .36s var(--out) both}
+:is(.enter-month-next,.enter-month-prev,.enter-pick) .picked>:nth-child(2){animation-delay:.04s}
+:is(.enter-month-next,.enter-month-prev,.enter-pick) .picked>:nth-child(3){animation-delay:.08s}
+
+/* Homework sheet */
+.homework-overlay.opening .overlay-backdrop{animation:fade .3s ease-out both}
+.homework-overlay.opening .homework-dialog{animation:sheet-in .45s var(--out) both}
+.homework-overlay.opening .overlay-content>*{animation:rise-sm .45s var(--out) both;animation-delay:.08s}
+.homework-overlay.opening .overlay-content>:nth-child(3){animation-delay:.14s}
+.homework-overlay.closing{pointer-events:none}
+.homework-overlay.closing .overlay-backdrop{animation:fade-out .22s ease-in both}
+.homework-overlay.closing .homework-dialog{animation:sheet-out .22s cubic-bezier(.4,0,1,1) both}
+@media(max-width:600px){
+  .homework-overlay.opening .homework-dialog{animation:sheet-up .5s var(--out) both}
+  .homework-overlay.closing .homework-dialog{animation:sheet-down .24s cubic-bezier(.4,0,1,1) both}
+  .booting .tabs{animation:dock-in .7s var(--out) .15s both}
+}
+
+/* Homework rows: tick, fold away, and newly saved work glows briefly. */
+.task.completing,.task.removing{overflow:hidden;pointer-events:none;animation:leave-row .42s var(--out) forwards}
+.task.removing{animation-duration:.26s}
+.task.completing .check{background:var(--accent);border-color:var(--accent);animation:pop .35s var(--spring)}
+.task.completing .task-body>strong{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--ink-3);transition:color .2s}
+.task:is(.just-done,.just-opened) .check{animation:pop .4s var(--spring)}
+.task.just-done .check .icon{animation:tile .3s var(--spring) .05s both}
+.task.just-saved{animation:flash 1.4s ease-out,rise-sm .4s var(--out);border-radius:12px}
+.steps li.just-added{animation:rise-sm .35s var(--out) both}
+.steps li.just-done .step-check{animation:pop .4s var(--spring)}
+.steps li.removing{pointer-events:none;animation:fade-out .2s ease-in forwards}
+.tab-badge.bump{animation:pop .45s var(--spring)}
+
+/* Panels that open reveal their contents rather than appearing all at once. */
+details.opening[open]>:not(summary){animation:rise-sm .32s var(--out) both}
+.composer.opening[open] .form>*{animation:rise-sm .38s var(--out) both}
+.composer.opening[open] .form>:nth-child(n+3){animation-delay:.04s}
+.composer.opening[open] .form>:nth-child(n+5){animation-delay:.08s}
+.composer.opening[open] .form>:nth-child(n+7){animation-delay:.12s}
+
+/* The lesson happening now has a live pulse. */
+.live{display:inline-block;width:7px;height:7px;margin-right:7px;vertical-align:1px;border-radius:50%;background:var(--accent);animation:live 2s ease-out infinite}
+
+/* Hover and press: small, physical responses. */
+.tab,.button,.due-row,.icon-btn,.add-inline,.check,.wk-day,.day,.step-check,.brand{transition:background .18s,color .18s,box-shadow .2s,transform .18s var(--ease)}
+:is(.tab,.button,.due-row,.icon-btn,.add-inline,.check,.wk-day,.day,.step-check,.brand):active{transform:scale(.95)}
+.stepper .icon-btn .icon,.add-inline .icon,.due-row .dot,.button .icon{transition:transform .25s var(--spring)}
+.stepper :is([data-shift="-1"],[data-step="-1"]):hover .icon{transform:translateX(-2px)}
+.stepper :is([data-shift="1"],[data-step="1"]):hover .icon{transform:translateX(2px)}
+.add-inline:hover .icon{transform:rotate(90deg)}
+.due-row:hover .dot{transform:scale(1.3)}
+.check:hover{transform:scale(1.08)}
+.day:not(.selected):hover{transform:translateY(-1px)}
+.button.primary:hover,.composer>summary.button:hover{transform:translateY(-1px);box-shadow:var(--shadow-2)}
+.link{background:linear-gradient(currentColor,currentColor) 0 calc(100% - 2px)/0 1.5px no-repeat;transition:background-size .25s var(--out),color .15s}
+.link:hover{text-decoration:none;background-size:100% 1.5px}
+.toggle span{transition:background .2s,color .2s,box-shadow .2s}
+.more>summary::after{display:inline-block;transition:transform .2s var(--ease)}
+.overlay-close .icon{transition:transform .25s var(--spring)}
+.overlay-close:hover .icon{transform:rotate(90deg)}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

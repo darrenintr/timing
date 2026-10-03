@@ -74,13 +74,78 @@ const state = {
   homework: local.homework,
   overrides: local.overrides,
   timeMode: local.timeMode,
-  view: views.includes(saved.view) ? saved.view : 'today',
+  view: views.includes(hashView()) ? hashView() : views.includes(saved.view) ? saved.view : 'today',
   filter: 'open', subjectFilter: 'all', editingId: null, prefillSubject: null,
-  composing: false, expanded: new Set(), draft: null, homeworkOverlay: false, monthMotion: 0
+  composing: false, expanded: new Set(), draft: null, homeworkOverlay: false
 };
+function hashView() {
+  const hash = globalThis.location?.hash?.slice(1);
+  return views.includes(hash) ? hash : null;
+}
 let followToday = true;
 const app = document.querySelector('#app');
 if (nativeApp) document.documentElement.classList.add('native-app');
+
+/* ---------- Motion ----------
+   The whole view is redrawn from a string, so motion is one-shot: an action names the
+   transition it wants, the next render plays it, and later redraws (clock, sync) stay still. */
+let motion = 'boot';
+let flash = null;
+let lastOpenCount = null;
+const animated = () => !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+const direction = (from, to) => to > from ? 'next' : 'prev';
+const mondayOf = date => addDays(date, -((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7));
+function viewMotion(view) { motion = views.indexOf(view) > views.indexOf(state.view) ? 'forward' : 'back'; }
+function dayMotion(from, to) {
+  if (from === to) return;
+  motion = `day-${direction(from, to)}`;
+  if (mondayOf(from) !== mondayOf(to)) motion += ' week-change';
+}
+// Selection pills (tab, week day, calendar day) glide from where they were to where they are.
+function measureFlip() {
+  if (!app.querySelectorAll || !animated()) return null;
+  return new Map([...app.querySelectorAll('[data-flip]')].map(element => [element.dataset.flip, element.getBoundingClientRect()]));
+}
+function playFlip(before) {
+  if (!before?.size) return;
+  for (const element of app.querySelectorAll('[data-flip]')) {
+    const from = before.get(element.dataset.flip);
+    if (!from || !element.animate) continue;
+    const to = element.getBoundingClientRect();
+    const dx = from.left - to.left, dy = from.top - to.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(from.width - to.width) < 1) continue;
+    element.animate([
+      {transform:`translate(${dx}px,${dy}px)`, width:`${from.width}px`, height:`${from.height}px`},
+      {transform:'none', width:`${to.width}px`, height:`${to.height}px`}
+    ], {duration:420, easing:'cubic-bezier(.34,1.32,.5,1)'});
+  }
+}
+// Play an exit on rows that are about to leave the list, then commit the change.
+function leave(element, className, commit, duration = 260) {
+  if (!element?.classList || !animated()) { commit(); return; }
+  element.classList.add(className);
+  setTimeout(commit, duration);
+}
+function nudge(element, keyframes, options) {
+  if (element?.animate && animated()) element.animate(keyframes, options);
+}
+
+/* ---------- History ----------
+   Each tab is a #hash, so the browser and Android back button return to Today
+   (or close the homework sheet) instead of leaving the app. */
+function navigate(view) {
+  if (view === state.view) return false;
+  viewMotion(view);
+  const history = globalThis.history;
+  if (history?.pushState) {
+    if (state.view === 'today') history.pushState({view, fromToday:true}, '', `#${view}`);
+    else if (view === 'today' && history.state?.fromToday) history.back();
+    else history.replaceState({view, fromToday:history.state?.fromToday}, '', `#${view}`);
+  }
+  state.view = view;
+  return true;
+}
+const recordView = () => globalThis.history?.replaceState?.({view:state.view}, '', `#${state.view}`);
 function feedback(kind = 'tap') {
   if (nativeApp) {
     const pulse = kind === 'success' ? Haptics.notification({type:NotificationType.Success})
@@ -91,10 +156,11 @@ function feedback(kind = 'tap') {
 }
 function showSyncStatus() {
   const panel = app.querySelector('.sync-indicator');
-  if (panel) {
+  if (panel && panel.textContent !== syncNotice) {
     panel.classList.toggle('error', syncError);
     panel.textContent = syncNotice;
-  }
+    nudge(panel, [{opacity:0, transform:'translateY(-3px)'}, {opacity:1, transform:'none'}], {duration:240, easing:'ease-out'});
+  } else panel?.classList.toggle('error', syncError);
   const warning = app.querySelector('.storage-indicator');
   if (warning) { warning.textContent = storageWarning; warning.hidden = !storageWarning; }
 }
@@ -188,14 +254,14 @@ function lessonList(date) {
     const add = `<button class="add-inline" data-new-subject="${lesson.subject}" aria-label="Add ${escapeHTML(lesson.name)} homework" title="Add homework">${icon('add')}</button>`;
     if (current) {
       const progress = Math.round((now - minutes(start)) / (minutes(end) - minutes(start)) * 100);
-      rows.push(`<li class="lesson now"><span class="time"><b>${start}</b>${end}</span><div class="lesson-body"><span class="now-tag">Now · ${minutes(end) - now} min left</span><strong>${escapeHTML(lesson.name)}</strong><span class="where">${where}</span>${dueMark}<span class="bar" role="progressbar" aria-label="Lesson progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><i style="width:${Math.max(progress, 3)}%"></i></span></div>${add}</li>`);
+      rows.push(`<li class="lesson now" style="--i:${rows.length}"><span class="time"><b>${start}</b>${end}</span><div class="lesson-body"><span class="now-tag"><i class="live" aria-hidden="true"></i>Now · ${minutes(end) - now} min left</span><strong>${escapeHTML(lesson.name)}</strong><span class="where">${where}</span>${dueMark}<span class="bar" role="progressbar" aria-label="Lesson progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><i style="width:${Math.max(progress, 3)}%"></i></span></div>${add}</li>`);
     } else {
-      rows.push(`<li class="lesson ${past ? 'past' : ''}"><span class="time"><b>${start}</b>${end}</span><div class="lesson-body"><strong>${escapeHTML(lesson.name)}${dueMark}</strong><span class="where">${where}</span></div>${add}</li>`);
+      rows.push(`<li class="lesson ${past ? 'past' : ''}" style="--i:${rows.length}"><span class="time"><b>${start}</b>${end}</span><div class="lesson-body"><strong>${escapeHTML(lesson.name)}${dueMark}</strong><span class="where">${where}</span></div>${add}</li>`);
     }
     const next = lessons[index + 1];
     if (next) {
       const nextStart = periodTimes[state.timeMode][next.period - 1][0];
-      if (minutes(nextStart) > minutes(end)) rows.push(`<li class="break"><span>${minutes(nextStart) - minutes(end) >= 45 ? 'Lunch' : 'Break'}</span><span class="mono">${end}–${nextStart}</span></li>`);
+      if (minutes(nextStart) > minutes(end)) rows.push(`<li class="break" style="--i:${rows.length}"><span>${minutes(nextStart) - minutes(end) >= 45 ? 'Lunch' : 'Break'}</span><span class="mono">${end}–${nextStart}</span></li>`);
     }
   });
   return `<ol class="lessons">${rows.join('')}</ol>`;
@@ -205,14 +271,26 @@ function dueSoon() {
   const upcoming = visibleHomework(state.homework, state.overrides).slice(0, 3);
   const open = state.homework.filter(item => !item.done).length;
   const body = upcoming.length
-    ? `<ul class="due-list">${upcoming.map(item => {
+    ? `<ul class="due-list">${upcoming.map((item, index) => {
       const status = homeworkStatus(item, today());
-      return `<li><button class="due-row" data-view="homework"><span class="dot ${status}"></span><span><strong>${escapeHTML(item.title)}</strong><small><span class="subject">${escapeHTML(labelSubject(item.subject))}</span> · <span class="mono">${escapeHTML(dueText(item))}</span>${status !== 'upcoming' ? ` · <em class="${status}">${statusLabels[status]}</em>` : ''}</small></span></button></li>`;
+      return `<li style="--i:${index}"><button class="due-row" data-view="homework"><span class="dot ${status}"></span><span><strong>${escapeHTML(item.title)}</strong><small><span class="subject">${escapeHTML(labelSubject(item.subject))}</span> · <span class="mono">${escapeHTML(dueText(item))}</span>${status !== 'upcoming' ? ` · <em class="${status}">${statusLabels[status]}</em>` : ''}</small></span></button></li>`;
     }).join('')}</ul>`
     : `<p class="quiet-line small">Nothing to hand in.</p>`;
   return `<section class="block">
     <div class="block-head">${label('Homework')}<span class="head-actions"><button class="link" data-compose>+ Add</button>${open ? `<button class="link muted" data-view="homework">All ${open} →</button>` : ''}</span></div>
     ${body}</section>`;
+}
+
+// The school week around the chosen day: one tap to any day, letters at a glance.
+function weekStrip() {
+  const monday = mondayOf(state.date);
+  const now = today();
+  const days = Array.from({length:7}, (_, index) => addDays(monday, index)).map((date, index) => {
+    const info = dayInfo(date, state.overrides);
+    const selected = date === state.date;
+    return `<button class="wk-day ${info.type} ${selected ? 'selected' : ''} ${date === now ? 'is-today' : ''}" style="--i:${index}" data-pick="${date}" aria-label="${readable(date)}, ${info.cycle ? `Day ${info.cycle}` : escapeHTML(dayNames[info.type] ?? info.type)}" ${selected ? 'aria-pressed="true"' : ''}>${selected ? `<i class="wk-pill" data-flip="wk-pill-${monday}"></i>` : ''}<span class="wk-name">${format(date, {weekday:'narrow'})}</span><span class="wk-num">${Number(date.slice(8))}</span><span class="wk-letter">${info.cycle || (info.type === 'holiday' || info.type === 'off' ? '·' : '')}</span></button>`;
+  });
+  return `<nav class="week" aria-label="Week of ${format(monday, {day:'numeric', month:'long'})}">${days.join('')}</nav>`;
 }
 
 function todayView() {
@@ -228,10 +306,11 @@ function todayView() {
         <div class="stepper"><button class="icon-btn" data-shift="-1" aria-label="Previous day">${icon('chevron_left')}</button><button class="icon-btn" data-shift="1" aria-label="Next day">${icon('chevron_right')}</button></div>
       </div>
       <p class="sub">${format(state.date, {day:'numeric', month:'long', year:'numeric'})}${isToday ? '' : ` · <button class="link" data-today>Back to today</button>`}</p>
+      ${weekStrip()}
       <p class="cycle">${info.cycle ? `<span class="cycle-letter">Day ${info.cycle}</span>` : `<span class="cycle-letter none">${dayNames[info.type] ?? 'No lessons'}</span>`}${lessons.length ? `<span class="cycle-meta">${lessons.length} lessons · until <span class="mono">${lastEnd}</span></span>` : ''}</p>
       ${showNotice ? `<p class="notice ${noticeTone}"><span>${escapeHTML(info.label)}</span><button class="link" data-view="settings">Adjust day</button></p>` : ''}
     </header>
-    <section class="block">
+    <section class="block day-swipe" aria-label="Lessons, swipe left or right to change day">
       <div class="block-head">${label('Lessons')}<span class="head-note">${state.timeMode === 'winter' ? 'Winter' : 'Summer'} times</span></div>
       ${lessonList(state.date)}
     </section>
@@ -245,7 +324,7 @@ function changeMonth(direction) {
   const first = new Date(Date.UTC(year, month - 1 + direction, 1));
   const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
   state.date = `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
-  state.monthMotion = direction;
+  motion = `month-${direction > 0 ? 'next' : 'prev'}`;
   followToday = state.date === today();
   feedback('selection');
   persist(); render();
@@ -262,7 +341,7 @@ function calendarView() {
     const info = dayInfo(date, state.overrides);
     const flag = info.type === 'regular' && /check/i.test(info.label);
     const selected = date === state.date;
-    cells.push(`<button class="day ${info.type} ${selected ? 'selected' : ''} ${date === now ? 'is-today' : ''} ${flag ? 'flag' : ''}" data-pick="${date}" aria-label="${readable(date)}, ${info.cycle ? `Day ${info.cycle}` : escapeHTML(dayNames[info.type] ?? info.type)}" ${selected ? 'aria-pressed="true"' : ''}><span class="num">${n}</span><span class="letter">${info.cycle || ''}</span></button>`);
+    cells.push(`<button class="day ${info.type} ${selected ? 'selected' : ''} ${date === now ? 'is-today' : ''} ${flag ? 'flag' : ''}" style="--i:${first + n}" data-pick="${date}" aria-label="${readable(date)}, ${info.cycle ? `Day ${info.cycle}` : escapeHTML(dayNames[info.type] ?? info.type)}" ${selected ? 'aria-pressed="true"' : ''}>${selected ? `<i class="day-pill" data-flip="day-pill-${year}-${month}"></i>` : ''}<span class="num">${n}</span><span class="letter">${info.cycle || ''}</span></button>`);
   }
   const monthName = format(`${year}-${String(month).padStart(2,'0')}-01`, {month:'long'});
   const info = dayInfo(state.date, state.overrides);
@@ -270,9 +349,10 @@ function calendarView() {
   return `<header class="hero">
       <div class="hero-row"><h1 class="display">${monthName} <span class="year">${year}</span></h1>
         <div class="stepper"><button class="icon-btn" data-step="-1" aria-label="Previous month">${icon('chevron_left')}</button><button class="icon-btn" data-step="1" aria-label="Next month">${icon('chevron_right')}</button></div></div>
+      ${state.date === now ? '' : `<p class="sub">${format(state.date, {day:'numeric', month:'short'})} selected · <button class="link" data-today>Back to today</button></p>`}
     </header>
     <section class="block calendar-swipe" aria-label="Calendar, swipe left or right to change month">
-      <div class="month ${state.monthMotion ? `month-enter-${state.monthMotion > 0 ? 'next' : 'previous'}` : ''}">${['S','M','T','W','T','F','S'].map(day => `<span class="wd" aria-hidden="true">${day}</span>`).join('')}${cells.join('')}</div>
+      <div class="month">${['S','M','T','W','T','F','S'].map(day => `<span class="wd" aria-hidden="true">${day}</span>`).join('')}${cells.join('')}</div>
       <p class="legend"><span><b class="mono">A–F</b> cycle day</span><span><i class="sw special"></i> special / exams</span><span><i class="sw flag"></i> check changes</span></p>
     </section>
     <section class="block picked">
@@ -292,20 +372,21 @@ function duePreview(item) {
     : `Due <strong>${when}</strong> · <span class="mono">17:00</span><br><small>Fixed date, not tied to a lesson.</small>`;
 }
 
-function homeworkItem(item) {
+function homeworkItem(item, index = 0) {
   const status = homeworkStatus(item, today());
   const steps = Array.isArray(item.steps) ? item.steps : [];
   const finished = steps.filter(step => step.done).length;
   const summary = [steps.length ? `${finished}/${steps.length} steps` : 'Steps', item.notes ? 'notes' : ''].filter(Boolean).join(' · ');
   const id = escapeHTML(item.id);
-  return `<li class="task ${item.done ? 'done' : ''}">
+  const flashed = flash?.task === item.id ? flash.kind : '';
+  return `<li class="task ${item.done ? 'done' : ''} ${flashed}" style="--i:${index}" data-task="${id}">
     <button class="check" data-toggle="${id}" aria-label="${item.done ? 'Mark incomplete' : 'Mark complete'}" aria-pressed="${item.done}">${item.done ? icon('check') : ''}</button>
     <div class="task-body">
       <strong>${escapeHTML(item.title)}</strong>
       <small><span class="subject">${escapeHTML(labelSubject(item.subject))}</span> · <span class="mono">${escapeHTML(dueText(item))}</span>${status !== 'upcoming' && status !== 'completed' ? ` · <em class="${status}">${statusLabels[status]}</em>` : ''}</small>
       <details class="more" data-id="${id}" ${state.expanded.has(item.id) ? 'open' : ''}><summary>${summary}</summary>
         ${item.notes ? `<p class="notes">${escapeHTML(item.notes)}</p>` : ''}
-        ${steps.length ? `<ul class="steps">${steps.map(step => `<li><button class="step-check ${step.done ? 'on' : ''}" data-step-toggle="${id}" data-step-id="${escapeHTML(step.id)}" aria-label="${step.done ? 'Reopen' : 'Complete'} step">${icon(step.done ? 'check_box' : 'check_box_outline_blank')}</button><span class="${step.done ? 'done' : ''}">${escapeHTML(step.title)}</span><button class="icon-btn tiny" data-step-remove="${id}" data-step-id="${escapeHTML(step.id)}" aria-label="Remove step">${icon('close')}</button></li>`).join('')}</ul>` : ''}
+        ${steps.length ? `<ul class="steps">${steps.map(step => `<li class="${flash?.step === step.id ? flash.kind : ''}"><button class="step-check ${step.done ? 'on' : ''}" data-step-toggle="${id}" data-step-id="${escapeHTML(step.id)}" aria-label="${step.done ? 'Reopen' : 'Complete'} step">${icon(step.done ? 'check_box' : 'check_box_outline_blank')}</button><span class="${step.done ? 'done' : ''}">${escapeHTML(step.title)}</span><button class="icon-btn tiny" data-step-remove="${id}" data-step-id="${escapeHTML(step.id)}" aria-label="Remove step">${icon('close')}</button></li>`).join('')}</ul>` : ''}
         <form class="step-form" data-task-id="${id}"><input name="step" maxlength="100" placeholder="Add a smaller step…" aria-label="New homework step" required><button class="link" type="submit">Add</button></form>
         <div class="task-actions"><button class="link" data-edit="${id}">Edit</button><button class="link danger" data-remove="${id}">Delete</button></div>
       </details>
@@ -320,7 +401,7 @@ function groupedHomework(items) {
     if (groups.at(-1)?.status !== status) groups.push({status, items: []});
     groups.at(-1).items.push(item);
   }
-  return groups.map(group => `<h3 class="label ${group.status}">${statusLabels[group.status]}</h3><ul class="tasks">${group.items.map(homeworkItem).join('')}</ul>`).join('');
+  return groups.map(group => `<h3 class="label ${group.status}">${statusLabels[group.status]}</h3><ul class="tasks">${group.items.map((item, index) => homeworkItem(item, index)).join('')}</ul>`).join('');
 }
 
 function homeworkView() {
@@ -440,15 +521,25 @@ async function copyScriptableSnapshot() {
 /* ---------- Shell ---------- */
 
 let overlayReturnFocus = null;
-function closeHomeworkOverlay() {
-  state.homeworkOverlay = false;
-  state.editingId = null;
-  state.prefillSubject = null;
-  state.composing = false;
+let overlayClosing = false;
+function closeHomeworkOverlay(fromHistory = false) {
+  if (overlayClosing || !state.homeworkOverlay) return;
+  if (!fromHistory && globalThis.history?.state?.overlay) globalThis.history.back();
   feedback();
-  render();
-  if (overlayReturnFocus) app.querySelector(overlayReturnFocus)?.focus?.({preventScroll:true});
-  overlayReturnFocus = null;
+  const finish = () => {
+    overlayClosing = false;
+    state.homeworkOverlay = false;
+    state.editingId = null;
+    state.prefillSubject = null;
+    state.composing = false;
+    render();
+    if (overlayReturnFocus) app.querySelector(overlayReturnFocus)?.focus?.({preventScroll:true});
+    overlayReturnFocus = null;
+  };
+  const overlay = app.querySelector('.homework-overlay');
+  if (!overlay) { finish(); return; }
+  overlayClosing = true;
+  leave(overlay, 'closing', finish, 220);
 }
 
 // The whole view is redrawn, so find the focused control again by its identifying attributes.
@@ -460,31 +551,56 @@ function focusSelector(element) {
   if (!attributes.length) return null;
   return element.tagName.toLowerCase() + attributes.map(({name, value}) => `[${name}="${CSS.escape(value)}"]`).join('');
 }
+const tabs = [['today', 'Today', 'today'], ['calendar', 'Calendar', 'calendar_month'], ['homework', 'Homework', 'assignment'], ['settings', 'Settings', 'tune']];
 function render() {
   const focused = focusSelector(globalThis.document?.activeElement);
+  const before = measureFlip();
+  const enter = motion;
+  motion = null;
   const open = state.homework.filter(item => !item.done).length;
-  const tab = (view, text) => `<button class="tab ${state.view === view ? 'active' : ''}" data-view="${view}" ${state.view === view ? 'aria-current="page"' : ''}>${text}${view === 'homework' && open ? `<sup>${open}</sup>` : ''}</button>`;
+  const bump = lastOpenCount !== null && open !== lastOpenCount;
+  lastOpenCount = open;
+  const tab = ([view, text, glyph]) => {
+    const active = state.view === view;
+    const badge = view === 'homework' && open ? `<sup class="tab-badge${bump ? ' bump' : ''}" aria-label="${open} open">${open}</sup>` : '';
+    return `<button class="tab tab-${view}${active ? ' active' : ''}" data-view="${view}" ${active ? 'aria-current="page"' : ''}>${active ? '<i class="tab-pill" data-flip="tab-pill"></i>' : ''}<span class="tab-icon">${icon(active && view !== 'settings' ? `${glyph}_fill` : glyph)}</span><span class="tab-label">${text}</span>${badge}</button>`;
+  };
   const body = {today: todayView, calendar: calendarView, homework: homeworkView, settings: settingsView}[state.view]();
-  app.innerHTML = `<div class="shell view-${state.view}" ${state.homeworkOverlay ? 'inert aria-hidden="true"' : ''}>
+  app.innerHTML = `<div class="shell view-${state.view}${enter === 'boot' ? ' booting' : ''}" ${state.homeworkOverlay ? 'inert aria-hidden="true"' : ''}>
   <nav class="top" aria-label="Main">
     <button class="brand" data-view="today" aria-label="Timing, go to Today"><img src="./icon.svg" alt="" width="26" height="26"><span>timing</span></button>
-    <div class="tabs">${tab('today', 'Today')}${tab('calendar', 'Calendar')}${tab('homework', 'Homework')}</div>
-    <button class="icon-btn settings-btn ${state.view === 'settings' ? 'active' : ''}" data-view="settings" aria-label="Settings" ${state.view === 'settings' ? 'aria-current="page"' : ''}>${icon('tune')}</button>
+    <div class="tabs">${tabs.map(tab).join('')}</div>
   </nav>
   <p class="sync-indicator ${syncError ? 'error' : ''}" role="status">${escapeHTML(syncNotice)}</p>
   <p class="storage-indicator" role="alert" ${storageWarning ? '' : 'hidden'}>${escapeHTML(storageWarning)}</p>
   ${updateReady ? '<p class="update-indicator" role="status">An update is ready. <button class="link" data-update>Reload app</button></p>' : ''}
-  <main>${body}</main>
-</div>${state.homeworkOverlay ? `<div class="homework-overlay"><button class="overlay-backdrop" data-close-homework tabindex="-1" aria-label="Close homework"></button><section class="homework-dialog" role="dialog" aria-modal="true" aria-label="Homework"><button class="icon-btn overlay-close" data-close-homework aria-label="Close homework">${icon('close')}</button><div class="overlay-content">${homeworkView()}</div></section></div>` : ''}`;
+  <main class="${enter && !state.homeworkOverlay ? `enter ${enter.split(' ').map(name => `enter-${name}`).join(' ')}` : ''}">${body}</main>
+</div>${state.homeworkOverlay ? `<div class="homework-overlay ${enter === 'sheet' ? 'opening' : ''}"><button class="overlay-backdrop" data-close-homework tabindex="-1" aria-label="Close homework"></button><section class="homework-dialog" role="dialog" aria-modal="true" aria-label="Homework"><button class="icon-btn overlay-close" data-close-homework aria-label="Close homework">${icon('close')}</button><div class="overlay-content">${homeworkView()}</div></section></div>` : ''}`;
+  flash = null;
+  playFlip(before);
   if (focused) app.querySelector(focused)?.focus({preventScroll:true});
 }
 
+function shiftDay(days) {
+  const from = state.date;
+  state.date = addDays(state.date, days);
+  dayMotion(from, state.date);
+  followToday = state.date === today();
+  feedback('selection');
+  persist(); render();
+}
+
 app.addEventListener('click', event => {
+  // Opening a <details> panel plays its reveal once; a redraw that keeps it open does not.
+  const summary = event.target.closest?.('summary');
+  const panel = summary?.parentElement;
+  if (panel?.matches?.('details') && !panel.open) panel.classList.add('opening');
   const button = event.target.closest('button');
   if (!button) return;
   // A form's submit click must reach its submit event before the DOM is rebuilt.
   if (button.type === 'submit' && button.closest('form')) return;
   if (button.dataset.closeHomework !== undefined) { closeHomeworkOverlay(); return; }
+  if (overlayClosing) return;
   const viewBefore = state.view, dateBefore = state.date;
   const openOverlay = viewBefore === 'today' && !state.homeworkOverlay && !button.closest('.top') &&
     (button.dataset.compose !== undefined || button.dataset.newSubject || button.dataset.view === 'homework');
@@ -492,41 +608,70 @@ app.addEventListener('click', event => {
     overlayReturnFocus = button.dataset.compose !== undefined ? '[data-compose]' : button.dataset.newSubject
       ? `[data-new-subject="${button.dataset.newSubject}"]` : '[data-view="homework"]';
     state.homeworkOverlay = true;
+    motion = 'sheet';
+    globalThis.history?.pushState?.({view:'today', overlay:true}, '', '#today');
   }
-  if (button.dataset.pick) { state.date = button.dataset.pick; state.monthMotion = 0; feedback('selection'); }
+  if (button.dataset.pick) {
+    state.date = button.dataset.pick;
+    if (state.view === 'today') dayMotion(dateBefore, state.date);
+    else if (state.date !== dateBefore) motion = 'pick';
+    feedback('selection');
+  }
   if (button.dataset.view && !openOverlay) {
-    state.view = button.dataset.view;
+    navigate(button.dataset.view);
     state.homeworkOverlay = false;
-    state.monthMotion = 0;
   }
-  if (button.dataset.shift) { state.date = addDays(state.date, Number(button.dataset.shift)); feedback('selection'); }
-  if (button.dataset.today !== undefined) state.date = today();
+  if (button.dataset.shift) { shiftDay(Number(button.dataset.shift)); return; }
+  if (button.dataset.today !== undefined) {
+    state.date = today();
+    if (state.view === 'calendar' && dateBefore.slice(0, 7) !== state.date.slice(0, 7)) motion = `month-${direction(dateBefore, state.date)}`;
+    else if (state.view === 'calendar') motion = 'pick';
+    else dayMotion(dateBefore, state.date);
+    feedback('selection');
+  }
   const compose = button.dataset.compose !== undefined;
   if (compose || button.dataset.newSubject || button.dataset.edit || button.dataset.cancelEdit !== undefined) state.draft = null;
-  if (compose) { if (!openOverlay && !state.homeworkOverlay) state.view = 'homework'; state.editingId = null; state.prefillSubject = null; state.composing = true; }
+  if (compose) { if (!openOverlay && !state.homeworkOverlay) navigate('homework'); state.editingId = null; state.prefillSubject = null; state.composing = true; }
   if (button.dataset.newSubject) {
     state.prefillSubject = button.dataset.newSubject;
     state.editingId = null;
     state.composing = true;
-    if (!state.homeworkOverlay) state.view = 'homework';
+    if (!state.homeworkOverlay) navigate('homework');
   }
   if (button.dataset.step) { changeMonth(Number(button.dataset.step)); return; }
   if (state.date !== dateBefore || button.dataset.today !== undefined) followToday = state.date === today();
   if (button.dataset.toggle) {
     const item = state.homework.find(h => h.id === button.dataset.toggle);
-    if (item) { item.done = !item.done; feedback(item.done ? 'success' : 'tap'); }
+    if (item) {
+      item.done = !item.done;
+      feedback(item.done ? 'success' : 'tap');
+      flash = {task:item.id, kind:item.done ? 'just-done' : 'just-opened'};
+      // Completing from the Open list: let the row tick and fold away before it leaves.
+      if (item.done && state.filter === 'open') {
+        leave(button.closest('.task'), 'completing', () => { persist(); render(); }, 420);
+        return;
+      }
+    }
   }
   if (button.dataset.stepToggle || button.dataset.stepRemove) {
     const task = state.homework.find(h => h.id === (button.dataset.stepToggle || button.dataset.stepRemove));
     const step = task?.steps?.find(step => step.id === button.dataset.stepId);
-    if (step && button.dataset.stepToggle) { step.done = !step.done; feedback(step.done ? 'success' : 'tap'); }
-    if (step && button.dataset.stepRemove) task.steps = task.steps.filter(part => part.id !== step.id);
+    if (step && button.dataset.stepToggle) { step.done = !step.done; feedback(step.done ? 'success' : 'tap'); flash = {step:step.id, kind:'just-done'}; }
+    if (step && button.dataset.stepRemove) {
+      leave(button.closest('li'), 'removing', () => { task.steps = task.steps.filter(part => part.id !== step.id); persist(); render(); }, 200);
+      return;
+    }
   }
-  if (button.dataset.edit) { state.editingId = button.dataset.edit; state.composing = true; if (!state.homeworkOverlay) state.view = 'homework'; }
+  if (button.dataset.edit) { state.editingId = button.dataset.edit; state.composing = true; if (!state.homeworkOverlay) navigate('homework'); }
   if (button.dataset.cancelEdit !== undefined) { state.editingId = null; state.prefillSubject = null; state.composing = false; }
   if (button.dataset.remove && confirm('Remove this homework?')) {
-    state.homework = state.homework.filter(h => h.id !== button.dataset.remove);
-    if (state.editingId === button.dataset.remove) state.editingId = null;
+    const id = button.dataset.remove;
+    leave(button.closest('.task'), 'removing', () => {
+      state.homework = state.homework.filter(h => h.id !== id);
+      if (state.editingId === id) state.editingId = null;
+      persist(); render();
+    });
+    return;
   }
   if (button.dataset.sync === 'signin') { void signIn(); return; }
   if (button.dataset.sync === 'signout') { void signOut(); return; }
@@ -558,25 +703,64 @@ app.addEventListener('click', event => {
     app.querySelector('#homework-form input[name="title"]')?.focus({preventScroll:true});
   } else if (openOverlay) {
     app.querySelector('.overlay-close')?.focus({preventScroll:true});
-  } else if (button.dataset.view && state.view !== viewBefore) {
-    globalThis.scrollTo?.({top:0});
+  } else if (state.view !== viewBefore) {
+    globalThis.scrollTo?.({top:0, behavior:'instant'});
   }
 });
-let calendarTouch = null;
+
+// Horizontal swipes: months on the calendar, days on Today's lessons.
+let swipe = null;
 app.addEventListener('pointerdown', event => {
-  if (state.view !== 'calendar' || !event.target.closest?.('.calendar-swipe')) return;
-  calendarTouch = {id:event.pointerId, x:event.clientX, y:event.clientY};
+  if (state.view === 'calendar' && event.target.closest?.('.calendar-swipe')) swipe = {kind:'month'};
+  // A mouse drag over the lessons selects text instead of changing day.
+  else if (state.view === 'today' && event.pointerType !== 'mouse' && event.target.closest?.('.day-swipe, .hero')) swipe = {kind:'day'};
+  else return;
+  Object.assign(swipe, {id:event.pointerId, x:event.clientX, y:event.clientY});
 });
 app.addEventListener('pointerup', event => {
-  if (!calendarTouch || event.pointerId !== calendarTouch.id) return;
-  const dx = event.clientX - calendarTouch.x;
-  const dy = event.clientY - calendarTouch.y;
-  calendarTouch = null;
+  if (!swipe || event.pointerId !== swipe.id) return;
+  const dx = event.clientX - swipe.x;
+  const dy = event.clientY - swipe.y;
+  const {kind} = swipe;
+  swipe = null;
   if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
   event.preventDefault();
-  changeMonth(dx < 0 ? 1 : -1);
+  if (kind === 'month') changeMonth(dx < 0 ? 1 : -1);
+  else shiftDay(dx < 0 ? 1 : -1);
 });
-app.addEventListener('pointercancel', () => { calendarTouch = null; });
+app.addEventListener('pointercancel', () => { swipe = null; });
+// Back and forward move between tabs; Back also closes the homework sheet.
+globalThis.addEventListener?.('popstate', event => {
+  if (state.homeworkOverlay && !event.state?.overlay) { closeHomeworkOverlay(true); return; }
+  const view = event.state?.view ?? hashView() ?? 'today';
+  if (view === state.view || overlayClosing) return;
+  viewMotion(view);
+  state.view = view;
+  if (view !== 'homework' && !state.editingId) state.composing = false;
+  feedback();
+  render();
+  globalThis.scrollTo?.({top:0, behavior:'instant'});
+});
+// Keyboard: ←/→ change day or month, T jumps to today, 1–4 switch tabs.
+document.addEventListener?.('keydown', event => {
+  if (state.homeworkOverlay || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.target?.closest?.('input, select, textarea, [contenteditable], details.more')) return;
+  const tabIndex = ['1', '2', '3', '4'].indexOf(event.key);
+  if (tabIndex >= 0 && navigate(views[tabIndex])) { feedback('selection'); render(); globalThis.scrollTo?.({top:0, behavior:'instant'}); return; }
+  if (event.key === 't' || event.key === 'T') {
+    if (state.date === today()) return;
+    const from = state.date;
+    state.date = today(); followToday = true;
+    if (state.view === 'calendar') motion = from.slice(0, 7) === state.date.slice(0, 7) ? 'pick' : `month-${direction(from, state.date)}`;
+    else dayMotion(from, state.date);
+    persist(); render(); return;
+  }
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  if (event.target?.closest?.('.month, .week, .toggle')) return;
+  const step = event.key === 'ArrowRight' ? 1 : -1;
+  if (state.view === 'today') { event.preventDefault(); shiftDay(step); }
+  else if (state.view === 'calendar') { event.preventDefault(); changeMonth(step); }
+});
 document.addEventListener?.('keydown', event => {
   if (!state.homeworkOverlay) return;
   if (event.key === 'Escape') { event.preventDefault(); closeHomeworkOverlay(); return; }
@@ -671,11 +855,19 @@ function updateDraftPreview() {
   if (!form) return;
   const data = new FormData(form);
   const manual = data.get('dueMode') === 'date';
-  form.querySelector('#manual-date-field').hidden = !manual;
+  const manualField = form.querySelector('#manual-date-field');
+  if (manualField.hidden === manual) {
+    manualField.hidden = !manual;
+    if (manual) nudge(manualField, [{opacity:0, transform:'translateY(-6px)'}, {opacity:1, transform:'none'}], {duration:240, easing:'cubic-bezier(.2,0,0,1)'});
+  }
   const dueInput = form.querySelector('[name="dueDate"]');
   dueInput.min = String(data.get('afterDate'));
   const draft = { subject:String(data.get('subject')), afterDate:String(data.get('afterDate')), dueMode:String(data.get('dueMode')), dueDate:String(data.get('dueDate')) };
-  form.querySelector('#due-preview').innerHTML = duePreview(resolveHomework(draft, state.overrides));
+  const preview = form.querySelector('#due-preview');
+  const next = duePreview(resolveHomework(draft, state.overrides));
+  if (preview.innerHTML === next) return;
+  preview.innerHTML = next;
+  nudge(preview, [{opacity:.35, transform:'translateY(3px)'}, {opacity:1, transform:'none'}], {duration:260, easing:'cubic-bezier(.2,0,0,1)'});
 }
 app.addEventListener('submit', event => {
   if (event.target.matches('.step-form')) {
@@ -684,8 +876,10 @@ app.addEventListener('submit', event => {
     const title = String(new FormData(event.target).get('step') ?? '').trim();
     if (task && title) {
       if (!Array.isArray(task.steps)) task.steps = [];
-      task.steps.push({id:crypto.randomUUID(), title:title.slice(0, 100), done:false});
+      const step = {id:crypto.randomUUID(), title:title.slice(0, 100), done:false};
+      task.steps.push(step);
       state.expanded.add(task.id);
+      flash = {step:step.id, kind:'just-added'};
       feedback('success');
       persist(); render();
       app.querySelector(`.step-form[data-task-id="${task.id}"] input`)?.focus();
@@ -704,14 +898,18 @@ app.addEventListener('submit', event => {
     state.prefillSubject = null;
     state.composing = false;
     feedback('success');
+    flash = {task:item.id, kind:'just-saved'};
     state.draft = null;
     persist(); render();
   } catch (error) {
     const message = app.querySelector('#form-error');
     message.textContent = error.message;
     message.hidden = false;
+    feedback();
+    nudge(message, [{transform:'translateX(0)'}, {transform:'translateX(-6px)'}, {transform:'translateX(5px)'}, {transform:'translateX(-3px)'}, {transform:'translateX(0)'}], {duration:320, easing:'ease-out'});
   }
 });
+recordView();
 render();
 refreshWidget(state, today());
 // Collect homework completed from a widget, then republish the snapshot.
@@ -725,9 +923,10 @@ document.addEventListener?.('visibilitychange', () => {
   if (document.visibilityState === 'visible') { void collectWidgetCompletions(); refreshClock(); }
 });
 onWidgetOpen(target => {
+  if (target.view !== state.view) viewMotion(target.view);
   state.view = target.view;
   state.homeworkOverlay = false;
-  state.homeworkOverlay = false;
+  recordView();
   if (target.compose) { state.editingId = null; state.prefillSubject = null; state.composing = true; state.draft = null; }
   if (target.id) { state.filter = 'open'; state.subjectFilter = 'all'; state.expanded.add(target.id); }
   render();
