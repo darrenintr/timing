@@ -115,12 +115,13 @@ jobs:
         run: test -d build/ios/DerivedData/Build/Products/Release-iphoneos/TimingWidget.appex
 
   ios:
-    name: Signed iOS IPA
+    name: iOS IPA
     if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Require iOS signing credentials
+      - name: Check iOS signing credentials
+        id: signing
         env:
           IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
@@ -128,9 +129,19 @@ jobs:
           IOS_WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
         run: |
+          missing=()
           for name in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD IOS_APP_PROFILE_BASE64 IOS_WIDGET_PROFILE_BASE64 IOS_TEAM_ID; do
-            if [ -z "${!name}" ]; then echo "::error::Missing $name; a device-installable IPA cannot be built."; exit 1; fi
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo 'signed=true' >> "$GITHUB_OUTPUT"
+          elif [ "${#missing[@]}" -eq 5 ]; then
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::No iOS signing credentials configured; building an unsigned IPA that must be re-signed (e.g. by a sideloading tool) before installation.'
+          else
+            echo "::error::iOS signing is partly configured; missing ${missing[*]}."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -148,6 +159,7 @@ jobs:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
           TIMING_FIREBASE_IOS_PLIST_BASE64: ${{ secrets.TIMING_FIREBASE_IOS_PLIST_BASE64 }}
       - name: Install iOS signing certificate and profiles
+        if: steps.signing.outputs.signed == 'true'
         env:
           IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
@@ -165,10 +177,13 @@ jobs:
         env:
           TIMING_FIREBASE_CONFIG: ${{ vars.TIMING_FIREBASE_CONFIG }}
       - name: Archive signed app and widget
+        if: steps.signing.outputs.signed == 'true'
         run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath build/ios/Timing.xcarchive DEVELOPMENT_TEAM="$IOS_TEAM_ID" archive
       - name: Verify widget extension is embedded
+        if: steps.signing.outputs.signed == 'true'
         run: test -d build/ios/Timing.xcarchive/Products/Applications/App.app/PlugIns/TimingWidget.appex
       - name: Export device-installable IPA
+        if: steps.signing.outputs.signed == 'true'
         run: |
           python3 scripts/write-ios-export-options.py
           xcodebuild -exportArchive -archivePath build/ios/Timing.xcarchive -exportPath dist/ios -exportOptionsPlist "$RUNNER_TEMP/timing-export-options.plist"
@@ -180,10 +195,22 @@ jobs:
           test -f "$RUNNER_TEMP/timing-ipa/Payload/App.app/embedded.mobileprovision"
           test -f "$RUNNER_TEMP/timing-ipa/Payload/App.app/PlugIns/TimingWidget.appex/embedded.mobileprovision"
           codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/timing-ipa/Payload/App.app"
+      - name: Compile iOS app and widget without signing
+        if: steps.signing.outputs.signed != 'true'
+        run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+          APP=build/ios/DerivedData/Build/Products/Release-iphoneos/App.app
+          test -d "$APP/PlugIns/TimingWidget.appex"
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/App.app
+          (cd dist && zip -qr Timing-ios-unsigned.ipa Payload)
       - uses: actions/upload-artifact@v4
         with:
-          name: Timing-iOS-signed-IPA
-          path: dist/Timing-ios.ipa
+          name: ${{ steps.signing.outputs.signed == 'true' && 'Timing-iOS-signed-IPA' || 'Timing-iOS-unsigned-IPA' }}
+          path: ${{ steps.signing.outputs.signed == 'true' && 'dist/Timing-ios.ipa' || 'dist/Timing-ios-unsigned.ipa' }}
           if-no-files-found: error
 
   windows:
@@ -247,7 +274,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if compgen -G 'release-assets/*-unsigned.ipa' > /dev/null; then
+            IOS_NOTE='unsigned iOS IPA (re-sign it, e.g. with a sideloading tool, before installing)'
+          else
+            IOS_NOTE='signed iOS IPA for registered devices'
+          fi
           gh release create "build-${GITHUB_RUN_NUMBER}" release-assets/*.apk release-assets/*.ipa release-assets/*.exe release-assets/*.deb \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Timing build ${GITHUB_RUN_NUMBER}" --prerelease \
-            --notes "Signed Android APK, signed iOS IPA for registered devices, Windows portable EXE, and Ubuntu DEB. Google sign-in still requires a live device check after installation."
+            --notes "Signed Android APK, ${IOS_NOTE}, Windows portable EXE, and Ubuntu DEB. Google sign-in still requires a live device check after installation."
